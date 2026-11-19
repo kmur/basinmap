@@ -50,6 +50,114 @@ const CONFIG_HEADERS = {
   "cache-control": "public, max-age=60, must-revalidate",
 };
 
+const ALLOWED_R2_PREFIXES = ["releases/", "overlays/", "media/", "exports/"];
+
+function guessR2ContentType(key: string): string {
+  const lower = key.toLowerCase();
+  if (lower.endsWith(".pmtiles")) return "application/vnd.pmtiles";
+  if (lower.endsWith(".json") || lower.endsWith(".geojson")) return "application/json; charset=utf-8";
+  if (lower.endsWith(".zip")) return "application/zip";
+  if (lower.endsWith(".xml")) return "application/xml; charset=utf-8";
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+  if (lower.endsWith(".png")) return "image/png";
+  if (lower.endsWith(".webp")) return "image/webp";
+  return "application/octet-stream";
+}
+
+function cacheControlForR2Key(key: string): string {
+  if (key === "releases/manifest.json" || key.startsWith("overlays/")) {
+    return "public, max-age=60, must-revalidate";
+  }
+  if (key.startsWith("releases/") || key.startsWith("media/")) {
+    return "public, max-age=31536000, immutable";
+  }
+  return "public, max-age=60, must-revalidate";
+}
+
+async function handlePublicR2Proxy(request: Request, bucket: R2Bucket, rawKey: string): Promise<Response> {
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return jsonResponse({ error: "Method not allowed" }, 405);
+  }
+  const key = decodeURIComponent(rawKey).replace(/^\/+/, "");
+  if (!key || key.includes("..") || !ALLOWED_R2_PREFIXES.some((p) => key.startsWith(p))) {
+    return jsonResponse({ error: "Not found", key }, 404);
+  }
+
+  const headObj = await bucket.head(key);
+  if (!headObj) {
+    return jsonResponse({ error: "Object not found", key }, 404);
+  }
+
+  const total = headObj.size;
+  const baseHeaders: Record<string, string> = {
+    "accept-ranges": "bytes",
+    "access-control-allow-origin": "*",
+    "access-control-allow-methods": "GET, HEAD",
+    "access-control-allow-headers": "Range, If-Match",
+    "access-control-expose-headers": "ETag, Content-Length, Content-Range",
+    "content-type": headObj.httpMetadata?.contentType || guessR2ContentType(key),
+    "cache-control": headObj.httpMetadata?.cacheControl || cacheControlForR2Key(key),
+    etag: headObj.httpEtag,
+  };
+
+  if (request.method === "HEAD") {
+    return new Response(null, {
+      status: 200,
+      headers: { ...baseHeaders, "content-length": String(total) },
+    });
+  }
+
+  const rangeHdr = request.headers.get("range");
+  if (rangeHdr) {
+    const match = rangeHdr.trim().match(/^bytes=(\d*)-(\d*)$/);
+    if (!match || (match[1] === "" && match[2] === "")) {
+      return new Response(null, {
+        status: 416,
+        headers: { ...baseHeaders, "content-range": `bytes */${total}` },
+      });
+    }
+    let start: number;
+    let end: number;
+    if (match[1] === "") {
+      const suffix = Number(match[2]);
+      start = Math.max(0, total - suffix);
+      end = total - 1;
+    } else {
+      start = Number(match[1]);
+      end = match[2] !== "" ? Number(match[2]) : total - 1;
+    }
+    if (start >= total || end < start) {
+      return new Response(null, {
+        status: 416,
+        headers: { ...baseHeaders, "content-range": `bytes */${total}` },
+      });
+    }
+    end = Math.min(end, total - 1);
+    const length = end - start + 1;
+    const rangedObj = await bucket.get(key, { range: { offset: start, length } });
+    if (!rangedObj) {
+      return jsonResponse({ error: "Object not found", key }, 404);
+    }
+    return new Response(rangedObj.body, {
+      status: 206,
+      headers: {
+        ...baseHeaders,
+        "content-length": String(length),
+        "content-range": `bytes ${start}-${end}/${total}`,
+      },
+    });
+  }
+
+  const fullObj = await bucket.get(key);
+  if (!fullObj) {
+    return jsonResponse({ error: "Object not found", key }, 404);
+  }
+  return new Response(fullObj.body, {
+    status: 200,
+    headers: { ...baseHeaders, "content-length": String(total) },
+  });
+}
+
 function jsonResponse(body: unknown, status: number, headers = NO_STORE_HEADERS): Response {
   return new Response(JSON.stringify(body, null, 2), { status, headers });
 }
@@ -284,6 +392,13 @@ export default {
         200,
         CONFIG_HEADERS
       );
+    }
+
+    if (pathname.startsWith("/api/r2/")) {
+      if (!env.PUBLIC_BUCKET) {
+        return jsonResponse({ error: "PUBLIC_BUCKET binding unavailable" }, 503);
+      }
+      return handlePublicR2Proxy(request, env.PUBLIC_BUCKET, pathname.slice("/api/r2/".length));
     }
 
     if (!env.DB) {

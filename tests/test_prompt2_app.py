@@ -104,9 +104,19 @@ class TestPrompt2App(unittest.TestCase):
         self.assertEqual(r2_bindings["INTAKE_BUCKET"], "basinmap-intake-media")
         self.assertEqual(cfg["vars"]["PUBLIC_DATA_URL"], "https://data.basinmap.org")
 
+        staging = cfg["env"]["staging"]
+        self.assertEqual(staging["name"], "basinmap-staging")
+        self.assertEqual(staging["routes"][0]["pattern"], "staging.basinmap.org")
+        self.assertEqual(staging["d1_databases"][0]["database_name"], "basinmap-db-staging")
+        staging_r2 = {b["binding"]: b["bucket_name"] for b in staging["r2_buckets"]}
+        self.assertEqual(staging_r2["PUBLIC_BUCKET"], "basinmap-public-data-staging")
+        self.assertEqual(staging_r2["INTAKE_BUCKET"], "basinmap-intake-media-staging")
+        self.assertEqual(staging["vars"]["PUBLIC_DATA_URL"], "/api/r2")
+
         worker_ts = (ROOT_DIR / "src" / "worker" / "index.ts").read_text(encoding="utf-8")
         self.assertIn("/api/health", worker_ts)
         self.assertIn("/api/config", worker_ts)
+        self.assertIn("/api/r2/", worker_ts)
         self.assertIn("env.ASSETS.fetch(request)", worker_ts)
 
     def test_build_dist_and_frontend_bundle(self) -> None:
@@ -162,6 +172,18 @@ class TestPrompt2App(unittest.TestCase):
         parsed = pmtiles_writer.parse_pmtiles_header(rng_body)
         self.assertEqual(parsed["magic"], "PMTiles\x03")
         self.assertEqual(parsed["num_addressed_tiles"], 16)
+
+        # Verify staging /api/r2/* proxy also honors 206 byte-range reads
+        st_r2_status, st_r2_headers, st_r2_body = _request_handler(
+            "/api/r2/releases/v0.1.0-demo/basins.pmtiles",
+            headers={"Range": "bytes=0-126"},
+        )
+        self.assertEqual(st_r2_status, 206)
+        self.assertEqual(st_r2_headers.get("content-length"), "127")
+        self.assertTrue(st_r2_headers.get("content-range", "").startswith("bytes 0-126/"))
+        st_parsed = pmtiles_writer.parse_pmtiles_header(st_r2_body)
+        self.assertEqual(st_parsed["magic"], "PMTiles\x03")
+        self.assertEqual(st_parsed["num_addressed_tiles"], 16)
 
     def test_graceful_degradation_during_api_outage(self) -> None:
         h_status, _, _ = _request_handler("/api/health", simulate_outage=True)

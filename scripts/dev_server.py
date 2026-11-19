@@ -134,6 +134,14 @@ class LocalBasinmapHandler(http.server.BaseHTTPRequestHandler):
             )
             return
 
+        if path.startswith("/api/r2/") and self.command in ("GET", "HEAD"):
+            rel_path = path[len("/api/r2") :]
+            if any(rel_path.startswith(p) for p in ("/releases/", "/overlays/", "/media/", "/exports/")):
+                if self._serve_r2_object(rel_path):
+                    return
+            self._send_json(404, {"error": "Object not found", "path": path}, "private, no-store")
+            return
+
         if self.backend is None:
             self._send_json(404, {"error": "Not found", "path": path}, "private, no-store")
             return
