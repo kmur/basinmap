@@ -65,7 +65,20 @@ flowchart TD
 
 Cloudflare recommends Workers Static Assets for new projects. Ordinary asset requests are free, but invoking Worker code introduces a different usage model. Keep static frontend paths out of unnecessary Worker execution. [Deployment guidance][S01] [Asset billing][S02]
 
-Illustrative addresses are `app.example.org`, `data.example.org`, and an API under the application domain. Actual domains and ownership remain to be selected. Configure a Cloudflare-managed zone for the R2 custom domain as required by the chosen setup, preserving existing website and email DNS records during any change. A production R2 endpoint should use a custom domain; `r2.dev` is a development endpoint with rate limits. [R2 public access][S03]
+`basinmap.org` is registered on a Cloudflare-managed zone. Configure the domain and bucket layout as follows, preserving any existing website and email DNS records during setup:
+
+- `https://basinmap.org`: Workers Static Assets serving the frontend SPA with zero Worker invocation cost.
+- `https://basinmap.org/api/*`: Same-origin Worker API routed with `run_worker_first = ["/api/*"]`, avoiding CORS preflight overhead on submissions and keeping `HttpOnly; Secure; SameSite=Lax` session cookies simple.
+- `https://data.basinmap.org`: Public R2 Custom Domain (`basinmap-public-data`) for spatial layers, overlays, approved public media, and Darwin Core exports. A production R2 endpoint must use a custom domain rather than `r2.dev`, which is a rate-limited development endpoint. [R2 public access][S03]
+- Private R2 bucket (`basinmap-intake-media`): Bound exclusively to the Worker (`env.INTAKE_BUCKET`) with no public hostname and no public CORS policy.
+
+Within the public R2 bucket, enforce strict top-level key prefix separation so automated map-release cleanup never threatens permanent GBIF publication assets:
+
+- `/releases/<version>/`: Immutable spatial layers and basin summaries (`Cache-Control: public, max-age=31536000, immutable`).
+- `/releases/manifest.json`: Mutable pointer to the active release (`Cache-Control: public, max-age=60, must-revalidate`).
+- `/overlays/approved.geojson`: Mutable public overlay of approved local observations awaiting GBIF snapshot reconciliation (`Cache-Control: public, max-age=60, must-revalidate`).
+- `/media/<uuid>.<ext>`: Permanent approved public observation media referenced by GBIF records; never touched by release cleanup.
+- `/exports/`: Darwin Core Archive (`dwca.zip`) and `eml.xml` endpoints; never touched by release cleanup.
 
 ## 4. Spatial data preparation and delivery
 
@@ -73,7 +86,9 @@ Illustrative addresses are `app.example.org`, `data.example.org`, and an API und
 
 Obtain a suitably scoped GBIF download rather than repeatedly paging through occurrence search results to reconstruct the full dataset. Preserve the download DOI, query, download date, source files needed for rebuilding, transformation parameters, and checksums. GBIF's download API provides asynchronous downloads and associated citation information. [GBIF downloads][S04]
 
-Each map release should have an immutable version directory and a small manifest that records source versions, spatial coverage, counts, licenses, attribution, and layer URLs. Build into a new directory, validate it, and update the manifest only after completion. Retain the previous release so rollback is a manifest change. Do not depend on overwriting a large archive while browsers are reading its byte ranges.
+Each map release should have an immutable version directory (`/releases/<version>/`) and a small manifest (`/releases/manifest.json`) that records source versions, spatial coverage, counts, licenses, attribution, and layer URLs. Build into a new directory, validate it, and update the manifest only after completion. Retain the previous release so rollback is a manifest change. Do not depend on overwriting a large archive while browsers are reading its byte ranges.
+
+Perform release retention cleanup using a **manifest-aware post-release script** that inspects `manifest.json`, keeps the `current` and `previous` version directories, and explicitly deletes only older `/releases/<version>/` prefixes (never touching `/media/`, `/exports/`, or `/overlays/`). Do **not** rely on age-based R2 Object Lifecycle rules to purge `/releases/`: lifecycle rules evaluate object age rather than release count, so pausing monthly builds would risk deleting the live production release.
 
 Proposed initial refresh policy: inspect for relevant updates weekly and publish a refreshed snapshot monthly, with an exceptional rebuild for important corrections or withdrawals. Confirm the cadence with the scientific owner. Do not assume a reliable incremental-change feed exists for every source; the first pipeline should support a complete scoped rebuild.
 
@@ -81,11 +96,13 @@ Proposed initial refresh policy: inspect for relevant updates weekly and publish
 
 Use PMTiles for suitable vector layers, including occurrence visualization and reference boundaries. Choose zoom ranges and generalization rules that prevent dense areas from overwhelming the browser. Broad-scale occurrence display should use appropriate aggregation; preserve record-level access and source data for detailed inspection.
 
-Use tiled, overview-equipped COGs when browser raster access is appropriate. MapLibre requires a compatible COG integration; hosting a TIFF alone is insufficient. Validate the actual coordinate system, compression, bands, nodata values, and mobile decoding behavior. If browser decoding performs poorly, evaluate prepared raster tiles before adding a live raster-processing service. [MapLibre COG example][S05]
+Use tiled, overview-equipped COGs when browser raster access is appropriate, such as layers where the browser must inspect raw floating-point or multi-band pixel values. MapLibre requires a compatible COG integration; hosting a TIFF alone is insufficient. Validate the actual coordinate system, compression, bands, nodata values, and mobile decoding behavior. For purely visual raster layers (such as hillshade, land cover, or display surfaces), evaluate WebP-encoded raster `.pmtiles` archives alongside COGs during the pilot: prepared raster PMTiles reduce granular range-request amplification and mobile decoding overhead compared to client-side COG decoding. [MapLibre COG example][S05]
 
 Generalized display geometry and aggregated tiles are presentation products. Analyses requiring original coordinates, geometry, or raster precision must use appropriate source data. Document that distinction in the application's methods.
 
 Define the supported filters and analyses before accepting the static design. Precomputed layers can support many display filters and prepared summaries, but arbitrary polygon counts, buffers, spatial joins, or unrestricted combinations may need additional indexing or computation. A low data change rate does not establish that every query can be answered cheaply. Confirm these interactions in the pilot.
+
+Because `basinmap.org` organizes data around hydrological basins, pre-aggregate basin statistics during the batch pipeline: store scalar summary counts directly in PMTiles vector feature properties for immediate map styling and tooltips, while keeping variable-length species lists and temporal summaries out of the vector tiles to avoid tile bloat. Serve those detailed summaries either as individual static JSON shards for coarser basin levels (global HydroBASINS counts are roughly 292 at Level 3, 1.3k at Level 4, 4.7k at Level 5, and 16k at Level 6—substantially fewer if regionally scoped) or inside regionally partitioned GeoParquet/SQLite files for fine sub-basins (Levels 7–12) to avoid generating hundreds of thousands of small objects and consuming Class A write allowances.
 
 For record inspection, either retain sufficient snapshot fields in accessible prepared products or provide a documented lookup strategy. If current GBIF API details are used, distinguish them from the versioned map snapshot. Core map display should continue during an external record-detail service outage, with the affected detail view explaining its availability.
 
@@ -93,13 +110,23 @@ For record inspection, either retain sufficient snapshot fields in accessible pr
 
 Large map archives belong in R2. Workers Static Assets has a 25 MiB per-file limit and does not natively honor byte-range requests with partial responses. Its ordinary response to a range request is the full asset. [Workers limits][S06] [Range behavior][S02]
 
-PMTiles depends on correct range and cross-origin behavior. Configure GET/HEAD access and the headers needed by the selected client, including handling of `Range`, `If-Match`, and exposed `ETag`/range response metadata where applicable. Verify this using browser requests from the production and preview origins. [PMTiles storage guidance][S07] [R2 CORS][S08]
+PMTiles depends on correct range and cross-origin behavior. Because `https://basinmap.org` and `https://data.basinmap.org` are separate origins, configure the public R2 bucket CORS policy explicitly with:
 
-Use long-lived cache headers on immutable public archives, short caching or revalidation on the release manifest, and private/no-store responses for personal submission data. Explicitly make `.pmtiles` and other intended public layer paths eligible for CDN caching. Do not assume unfamiliar extensions are cached automatically.
+- `AllowedOrigins: ["*"]` — Cloudflare's CDN cache does not partition cached responses by `Vary: Origin` by default; listing multiple explicit origins (such as production plus `http://localhost`) risks serving a cached response with the wrong `Access-Control-Allow-Origin` header.
+- `AllowedMethods: ["GET", "HEAD"]`
+- `AllowedHeaders: ["Range", "If-Match"]`
+- `ExposeHeaders: ["ETag", "Content-Length", "Content-Range"]`
 
-Cloudflare's ordinary CDN cacheable-file ceiling is 512 MB on Free, Pro, and Business plans. Large R2 files can still be served, but small range requests do not by themselves establish that a multi-gigabyte archive is efficiently cached at the edge. [CDN behavior and limits][S09]
+Verify this configuration using browser requests from deployed production and local/preview origins. [PMTiles storage guidance][S07] [R2 CORS][S08]
 
-Test both warm and cold delivery for the largest planned files. If results are poor, first evaluate regional/thematic partitions and smaller prepared assets. A tile-serving Worker is a later option when justified by measurements; it adds requests, cache logic, and another component to maintain. Do not proxy every map request through the submission API.
+Set explicit `Cache-Control` metadata on every R2 object at upload time: long-lived immutable headers (`public, max-age=31536000, immutable`) on `/releases/<version>/*` and permanent `/media/*`, short TTLs (`public, max-age=60, must-revalidate`) on `/releases/manifest.json` and `/overlays/approved.geojson`, and `private, no-store` responses on authenticated API endpoints. Enable **Cloudflare Smart Tiered Cache** (free) to improve regional cache hit rates on long-tail tile requests, and create an explicit **Cloudflare Cache Rule** for `data.basinmap.org` marking `.pmtiles`, `.tif`, `.fgb`, `.geojson`, and `.json` as eligible for cache while honoring origin `Cache-Control` headers. Do not assume unfamiliar extensions are cached automatically.
+
+Cloudflare's ordinary CDN cacheable-file ceiling is 512 MB on Free, Pro, and Business plans. When a browser issues a byte-range request for a file larger than 512 MB on an R2 custom domain, the edge skips caching and forwards every range request to R2. [CDN behavior and limits][S09]
+
+Test both warm and cold delivery in the pilot and evaluate the two concrete strategies for staying within budget and latency targets:
+
+1. **Partition archives below 500 MB:** Split large `.pmtiles` or COG layers by region, basin, or zoom tier under 500 MB so Cloudflare's standard CDN caches them directly on `data.basinmap.org` with zero Worker invocations (trading off extra client-side source/seam management).
+2. **Tile/Range Worker for single multi-GB archives:** Route tile requests through a stateless Worker backed by R2 bindings when a unified archive is preferred. Note that standard `caches.default` lookups inside a Worker still invoke—and bill—the Worker on every cache hit (roughly $9/month overage on Workers Paid at 40 million tile requests/month). Test Cloudflare's opt-in cache-in-front-of-Worker setting during the pilot to determine whether cached tile responses can bypass Worker invocations. Do not proxy map reads through the submission API.
 
 ## 5. Observation collection and GBIF publication
 
@@ -107,25 +134,27 @@ Test both warm and cold delivery for the largest planned files. If results are p
 
 Give each observation a stable project identifier suitable for use as `occurrenceID`. Store original contributor input, the interpreted values, revision history, attribution, license choice, evidence links, and workflow status. Keep the observation identifier stable when a record is corrected.
 
+Because GBIF only accepts `CC0 1.0`, `CC-BY 4.0`, or `CC-BY-NC 4.0` and applies a single license at the dataset level in `eml.xml` (mixed record licenses either force the entire dataset to the most restrictive choice or require separate datasets per license), adopt a single project-wide contribution license (recommended: `CC-BY 4.0` or `CC0 1.0`) that contributors explicitly accept for both occurrence records and uploaded media. Record this cleanly in the Darwin Core `license` field and the Simple Multimedia extension (`multimedia.txt`) `license` and `rightsHolder` fields.
+
 Capture the appropriate Darwin Core fields for the agreed record type: taxon/name information, event date, basis of record, coordinates, datum, uncertainty, locality, observer, identification information, and supporting evidence as relevant. Preserve verbatim values alongside normalized values. Define required fields with the eventual publisher rather than treating every possible Darwin Core term as mandatory.
 
 Separate review status from publication status. Suggested values include `draft`, `submitted`, `needs_changes`, and `approved` for review; and `not_exported`, `exported`, `published_by_provider`, `indexed_by_gbif`, and `publication_error` for delivery. A successful form submission must not be presented as confirmation of GBIF indexing.
 
-Pending records should be visible to their contributor and authorized reviewers. Any public overlay should contain only records approved for that visibility and should be labeled accurately. Reconcile exported records with later GBIF versions using stable source identifiers so a local overlay and a GBIF snapshot do not display the same occurrence twice.
+Pending records should be visible to their contributor and authorized reviewers. Serve the public overlay of approved local observations statically from R2 (`https://data.basinmap.org/overlays/approved.geojson`, `Cache-Control: public, max-age=60, must-revalidate`) rather than querying D1 on every public map visit, and label its provisional status accurately. Rebuild `approved.geojson` deterministically from a full `SELECT` query in D1—debounced via a Queue or scheduled cron job—rather than using read-modify-write updates, preventing concurrent reviewer approvals from overwriting each other. Reconcile exported records with later GBIF versions using stable source identifiers so a local overlay and a GBIF snapshot do not display the same occurrence twice.
 
 ### 5.2 Publishing route
 
 GBIF's normal ingestion model consumes datasets supplied through publishing organizations. Its public occurrence API is not a general insert endpoint for arbitrary observations. IPT is a common publishing mechanism, and custom systems can also serve standards-compliant archives from a web server. [GBIF publication model][S10]
 
-Preferred route: establish a relationship with a registered publisher and request access to an existing IPT in the relevant country or community. The IPT manual recommends hosted arrangements to reduce operating effort. A dataset discoverable through GBIF must have the required organizational affiliation. [IPT prerequisites][S11]
+Preferred route: build automated Darwin Core Archive generation (`.zip` containing `eml.xml`, `meta.xml`, `occurrence.txt`, and `multimedia.txt`) directly to `https://data.basinmap.org/exports/` and validate it continuously against the **GBIF Data Validator API** so technical readiness and Ebbe Nielsen Challenge demonstration do not stall on external server access. In parallel, establish a relationship with a registered, endorsed publishing organization—either to import that archive into an existing hosted IPT in the relevant country or community, or to register the custom R2 DwC-A endpoint directly under their organization. The IPT manual recommends hosted arrangements to reduce operating effort, and a dataset discoverable on GBIF must carry the required organizational endorsement and registered installation regardless of delivery mechanism. [IPT prerequisites][S11]
 
-Begin with a documented, manually supervised export/import process. Automate delivery only after the partner confirms supported import mechanisms, update schedules, validation rules, and responsibility for failed publications. Do not assume every IPT exposes a record-writing API suitable for the app.
+Begin with a documented, manually supervised export/import or registration process. Automate recurring updates only after the partner confirms supported import mechanisms, update schedules, validation rules, and responsibility for failed publications. Do not assume every IPT exposes a record-writing API suitable for the app.
 
-A second route is a registered publisher using a custom Darwin Core Archive endpoint, potentially served from R2. Validate the complete archive, metadata, registration, and update workflow before adopting this route. A third route is operating an IPT server, which introduces separate server maintenance and cost. An always-on IPT server is not inherent to the recommended application hosting design.
+For end-to-end engineering testing without polluting production GBIF data, validate registration and ingestion against the GBIF test environment (`gbif-uat.org` / `api.gbif-uat.org`, or `gbif-test.org`, using a sandbox test organization and installation obtained via `helpdesk@gbif.org`). Operating a self-hosted IPT server remains a last-resort third route that introduces separate server maintenance and cost and is not inherent to the recommended hosting design.
 
 Publication acceptance requires an end-to-end demonstration with an authorized publisher: submit, review, export, publish, confirm GBIF discovery, and process a correction while retaining the source identifier. The partner agreement should identify who manages updates, withdrawals, licensing, and continuity of the dataset endpoint. No GBIF publishing partner has yet been arranged.
 
-Keep published archive and media URLs stable for as long as their records reference them. Map-release cleanup rules must not delete objects still used by a published dataset. Check that a proposed hosting or publisher migration preserves those references and the organization's ability to maintain the dataset.
+Keep published archive and media URLs stable for as long as their records reference them. Storing approved public media under `/media/<uuid>.<ext>` and archives under `/exports/`—completely separate from `/releases/<version>/`—ensures map-release cleanup rules never delete objects referenced by a published dataset. Check that any proposed hosting or publisher migration preserves those references and the organization's ability to maintain the dataset.
 
 ## 6. Backend, database, and access controls
 
@@ -143,11 +172,11 @@ Relevant current database allowances are:
 
 These are different limits: a free account's 5 GB allowance does not make a single free database 5 GB. Row scans and index maintenance affect consumption; one observation is not necessarily one billed write. [D1 limits][S12] [D1 pricing][S13]
 
-Select a mature authentication implementation after confirming contributor access needs. Prefer a standard identity integration with a replaceable adapter. Require stronger authentication for reviewers and administrators. Identity, verification email, and account recovery costs are not yet included in the hosting estimate.
+Select a mature authentication implementation after confirming contributor access needs. Prefer a standard identity integration with a replaceable adapter; **ORCID OAuth** is a strong fit for biodiversity contributions because authenticated ORCID iDs map directly to Darwin Core `recordedByID` and `identifiedByID`. Require stronger authentication for reviewers and administrators. If passwordless magic links or account verification emails are used, budget for an external transactional email provider (such as Resend or Postmark), since Cloudflare Email Routing does not send outbound email to arbitrary addresses. Identity, verification email, and account recovery costs are not yet included in the hosting estimate.
 
-Enforce ownership and reviewer permissions server-side. Apply input validation, upload size/type limits, request throttling, and idempotency to avoid duplicate submissions on retries. Keep incoming media private; create public derivatives only when authorized for release. Use scoped, short-lived upload access where appropriate and prevent permanent storage credentials from reaching browsers.
+Enforce ownership and reviewer permissions server-side. Protect submission and upload endpoints with **Cloudflare Turnstile**, request throttling, input validation, and idempotency keys to avoid abuse and duplicate submissions on retries. For incoming evidence media, stream uploads directly through the Worker (`PUT /api/uploads/:id` → `env.INTAKE_BUCKET.put(key, request.body)`) rather than issuing S3 presigned URLs to browsers; this avoids exposing CORS on the private intake bucket and reliably enforces upload policies. Reject streaming uploads that lack a valid `Content-Length` header (required by R2 stream puts) or exceed the size cap (for example, 15 MB), verify the true file format from leading magic bytes rather than trusting the declared `Content-Type`, and prevent permanent storage credentials from reaching browsers.
 
-Define handling for sensitive species locations and personal information before enabling public contributions. Public mapping may need generalized coordinates while restricted reviewers retain originals. Pending records, private media, authentication material, and database backups must never enter the public GitHub repository or a public bucket.
+Define handling for sensitive species locations and personal information before enabling public contributions. Retain original uploaded files (such as HEIC, JPEG, PNG, or WebP) and extracted EXIF GPS/timestamp evidence in the private intake bucket for reviewer verification. Upon approval, generate sanitized public derivatives under `/media/<uuid>.jpg` (or `.webp`) using **Cloudflare Images transformations with `metadata: "none"`** (or an equivalent WebAssembly image pipeline) so EXIF `Orientation` is baked into upright pixel data, mobile formats such as HEIC are converted cleanly for browsers, and all private EXIF tags are stripped. Public mapping may also need generalized coordinates while restricted reviewers retain originals. Pending records, private media, authentication material, and database backups must never enter the public GitHub repository or a public bucket.
 
 ## 7. Cost model
 
@@ -248,7 +277,7 @@ Deploy data to new versioned keys, run format and HTTP checks, then switch the m
 
 Assign named owners for infrastructure/billing, scientific data stewardship, publication, and incident response. The same person may initially hold several roles, but access recovery must not depend on a single unmanaged account.
 
-Use D1 point-in-time recovery and independent encrypted exports. Proposed starting retention is seven daily, four weekly, and three monthly database backups, subject to the final privacy/deletion policy. Copy irreplaceable media and its manifest independently; keep reproducible source material or an independent copy for map releases. A second bucket in the same account is insufficient protection against complete account loss.
+Use D1 Time Travel (point-in-time recovery, 30 days on Workers Paid) for immediate operational rollback alongside independent encrypted SQL exports (`wrangler d1 export`) stored off-provider. Because `wrangler d1 export` blocks **all** requests (both reads and writes) to the database while generating the dump, schedule automated exports during low-traffic quiet hours. Proposed starting retention is seven daily, four weekly, and three monthly database backups, subject to the final privacy/deletion policy. Copy irreplaceable media and its manifest independently; keep reproducible source material or an independent copy for map releases. A second bucket in the same account is insufficient protection against complete account loss.
 
 Proposed recovery objectives are at most 24 hours of lost accepted submissions and restoration of core service within one business day. These are targets requiring a tested off-provider backup process, not vendor guarantees. Perform a restore exercise before launch and quarterly thereafter; adjust targets if the operating team cannot support them.
 
@@ -287,16 +316,17 @@ The reviewer is asked to resolve these decisions explicitly:
 
 | Decision | Proposed default | Evidence or owner needed |
 |---|---|---|
-| Provider and architecture | Cloudflare static delivery plus a small backend | Pilot measurements and portability demonstration |
-| Query and analysis scope | Prepared display filters and summaries | Confirm arbitrary spatial queries before excluding a spatial backend |
+| Provider and architecture | Cloudflare stack on `basinmap.org` (Workers Static Assets + same-origin `/api/*`) and `data.basinmap.org` (R2) | Pilot measurements and portability demonstration |
+| Query and analysis scope | Prepared display filters plus pre-aggregated hydrological basin summaries (counts in PMTiles; species lists in shards/GeoParquet) | Confirm arbitrary spatial queries before excluding a spatial backend |
 | Public backend plan | Workers Paid at $5/month | Expected database size, CPU, and operational needs |
-| Raster strategy | Browser COGs where they perform adequately | Largest-raster and mobile tests |
-| Archive partitioning | Partition where it improves measured delivery | Cold-cache and regional results |
-| Publishing route | Existing registered publisher/hosted IPT | Named partner and confirmed update process |
-| Identity and contributor access | Replaceable standard integration | Access model, email flow, and cost |
-| Privacy and location release | Private intake with reviewed public derivatives | Scientific steward and data policy |
-| Recurring budget | $10–$25/month initial infrastructure allowance | Complete retention/media/service assumptions |
-| Recovery and maintenance | Daily independent protection; assigned owners | Restore exercise and operating commitment |
+| Raster strategy | WebP raster `.pmtiles` for visual layers; browser COGs only where raw pixel inspection is required | Largest-raster and mobile tests |
+| Archive partitioning | `< 500 MB` partitions on `data.basinmap.org` vs. Tile/Range Worker (test cache-in-front-of-Worker) | Cold-cache, request count, and regional pilot results |
+| Publishing route | Automated DwC-A `.zip` export to `data.basinmap.org/exports/` + GBIF Data Validator + `gbif-uat.org` testing, alongside partner publisher endorsement | Named partner organization and confirmed update process |
+| Data and media licensing | Single dataset-wide contribution license (`CC-BY 4.0` or `CC0 1.0`) covering records and media | Confirm single license choice before building contributor forms |
+| Identity and contributor access | Replaceable standard integration (ORCID OAuth recommended) + Turnstile + external transactional email if needed | Access model, email flow, and cost |
+| Privacy and location release | Private intake via Worker streaming upload + Cloudflare Images (`metadata: "none"`) public derivatives under `/media/` | Scientific steward and data policy |
+| Recurring budget | $10–$25/month initial infrastructure allowance (with manifest-based release cleanup) | Complete retention/media/service assumptions |
+| Recovery and maintenance | D1 Time Travel + quiet-hours off-provider exports; assigned owners | Restore exercise and operating commitment |
 | Need for a VPS/PostGIS | Add when a demonstrated feature needs it | Workload beyond static products and simple transactional queries |
 
 This document requests architectural review. No provider account, payment commitment, production deployment, publishing registration, or contact with an external organization has been made as part of preparing it.
@@ -327,3 +357,13 @@ Links are primary provider, GBIF, or project documentation checked on 18 Novembe
 [S20]: https://www.hostinger.com/pricing
 [S21]: https://www.hostinger.com/vps-hosting
 [S22]: https://developers.cloudflare.com/d1/best-practices/import-export-data/
+
+## Revision Log
+
+- **Baseline (Commit 1):** Recorded original proposed architecture and GBIF publishing plan verbatim prior to domain and review updates.
+- **Refinements (Commit 2):**
+  - Locked in `basinmap.org` (Workers Static Assets + same-origin `/api/*` via `run_worker_first`) and `data.basinmap.org` (R2 Custom Domain), plus strict R2 prefix separation (`/releases/<version>/`, `/overlays/approved.geojson`, `/media/`, `/exports/`).
+  - Replaced age-based R2 lifecycle cleanup guidance with a manifest-aware post-release script so paused builds cannot delete the live release and permanent `/media/` and `/exports/` paths remain untouched.
+  - Added exact public R2 CORS policy (`AllowedOrigins: ["*"]`, exposing `ETag`, `Content-Length`, and `Content-Range`), Smart Tiered Cache, Cache Rule coverage for `.pmtiles`/`.json`/`.geojson`, and pilot comparison between `< 500 MB` partitions and a Tile Worker (including cache-in-front-of-Worker testing and default Worker invocation billing).
+  - Specified WebP raster `.pmtiles` for visual rasters, HydroBASINS pre-aggregation (counts in vector tiles, species lists in shards/GeoParquet), static deterministic rebuilds for `/overlays/approved.geojson`, single dataset-level licensing (`CC-BY 4.0` or `CC0 1.0`) mapped to DwC `license` and Simple Multimedia `license` + `rightsHolder`, and direct DwC-A `.zip` export with GBIF Data Validator and `gbif-uat.org` testing alongside publisher endorsement.
+  - Added ORCID OAuth, Turnstile, Worker-streamed uploads (`Content-Length` + magic-byte checks), Cloudflare Images (`metadata: "none"`) EXIF/HEIC derivative generation, outbound email provider budgeting, and `wrangler d1 export` full-database blocking scheduling guidance.
