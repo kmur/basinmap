@@ -1,0 +1,152 @@
+{
+  "release_version": "v0.1.0-demo",
+  "basin": {
+    "hybas_id": "7060041270",
+    "pfaf_id": "782915",
+    "basin_name": "Clackamas River",
+    "sub_area_km2": 2440.3,
+    "up_area_km2": 2440.3,
+    "occurrence_count": 12,
+    "species_count": 10,
+    "threatened_count": 5,
+    "min_year": 2019,
+    "max_year": 2026,
+    "shard_path": "basins/7060041270.json"
+  },
+  "bbox": [
+    -122.62,
+    45.02,
+    -121.66,
+    45.62
+  ],
+  "species": [
+    {
+      "scientificName": "Rana aurora",
+      "taxonKey": 2426776,
+      "family": "Ranidae",
+      "iucnRedListCategory": "LC",
+      "count": 2,
+      "firstYear": 2020,
+      "lastYear": 2022
+    },
+    {
+      "scientificName": "Salvelinus confluentus",
+      "taxonKey": 2351283,
+      "family": "Salmonidae",
+      "iucnRedListCategory": "VU",
+      "count": 2,
+      "firstYear": 2019,
+      "lastYear": 2021
+    },
+    {
+      "scientificName": "Actinemys marmorata",
+      "taxonKey": 2443326,
+      "family": "Emydidae",
+      "iucnRedListCategory": "VU",
+      "count": 1,
+      "firstYear": 2021,
+      "lastYear": 2021
+    },
+    {
+      "scientificName": "Cinclus mexicanus",
+      "taxonKey": 2495054,
+      "family": "Cinclidae",
+      "iucnRedListCategory": "LC",
+      "count": 1,
+      "firstYear": 2023,
+      "lastYear": 2023
+    },
+    {
+      "scientificName": "Dicamptodon tenebrosus",
+      "taxonKey": 2431954,
+      "family": "Dicamptodontidae",
+      "iucnRedListCategory": "LC",
+      "count": 1,
+      "firstYear": 2025,
+      "lastYear": 2025
+    },
+    {
+      "scientificName": "Entosphenus tridentatus",
+      "taxonKey": 2421296,
+      "family": "Petromyzontidae",
+      "iucnRedListCategory": "NT",
+      "count": 1,
+      "firstYear": 2026,
+      "lastYear": 2026
+    },
+    {
+      "scientificName": "Lontra canadensis",
+      "taxonKey": 2433745,
+      "family": "Mustelidae",
+      "iucnRedListCategory": "LC",
+      "count": 1,
+      "firstYear": 2024,
+      "lastYear": 2024
+    },
+    {
+      "scientificName": "Margaritifera falcata",
+      "taxonKey": 2289460,
+      "family": "Margaritiferidae",
+      "iucnRedListCategory": "NT",
+      "count": 1,
+      "firstYear": 2022,
+      "lastYear": 2022
+    },
+    {
+      "scientificName": "Oncorhynchus mykiss",
+      "taxonKey": 5204019,
+      "family": "Salmonidae",
+      "iucnRedListCategory": "LC",
+      "count": 1,
+      "firstYear": 2020,
+      "lastYear": 2020
+    },
+    {
+      "scientificName": "Oncorhynchus tshawytscha",
+      "taxonKey": 5204029,
+      "family": "Salmonidae",
+      "iucnRedListCategory": "LC",
+      "count": 1,
+      "firstYear": 2019,
+      "lastYear": 2019
+    }
+  ],
+  "temporal_histogram": {
+    "2019": 2,
+    "2020": 2,
+    "2021": 2,
+    "2022": 2,
+    "2023": 1,
+    "2024": 1,
+    "2025": 1,
+    "2026": 1
+  },
+  "basis_of_record": {
+    "HUMAN_OBSERVATION": 8,
+    "PRESERVED_SPECIMEN": 4
+  },
+  "datasets": [
+    {
+      "datasetKey": "50c9509d-22c7-4a22-a47d-8c48425ef4a7",
+      "datasetName": "iNaturalist Research-grade Observations",
+      "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+      "count": 4
+    },
+    {
+      "datasetKey": "7e380070-f762-11e1-a439-00145eb45e9a",
+      "datasetName": "Oregon Biodiversity Information Center Freshwater Survey",
+      "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+      "count": 4
+    },
+    {
+      "datasetKey": "82b1d700-f762-11e1-a439-00145eb45e9a",
+      "datasetName": "Oregon State University Ichthyology Collection",
+      "license": "http://creativecommons.org/publicdomain/zero/1.0/legalcode",
+      "count": 4
+    }
+  ],
+  "provenance": {
+    "gbif_doi": "10.15468/dl.basinmap-demo-2026",
+    "download_key": "0012345-261118120000000"
+  }
+}

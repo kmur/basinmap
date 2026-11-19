@@ -1,0 +1,1661 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": 4800000001,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041230:0001",
+        "gbifID": 4800000001,
+        "scientificName": "Oncorhynchus tshawytscha",
+        "taxonKey": 5204029,
+        "eventDate": "2019-01-01",
+        "year": 2019,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041230",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "iNaturalist"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -123.29412,
+          43.9752
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000002,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041230:0002",
+        "gbifID": 4800000002,
+        "scientificName": "Oncorhynchus mykiss",
+        "taxonKey": 5204019,
+        "eventDate": "2020-04-06",
+        "year": 2020,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041230",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "ORBIC"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.84106,
+          43.6872
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000003,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041230:0003",
+        "gbifID": 4800000003,
+        "scientificName": "Salvelinus confluentus",
+        "taxonKey": 2351283,
+        "eventDate": "2021-07-11",
+        "year": 2021,
+        "basisOfRecord": "PRESERVED_SPECIMEN",
+        "hybas_id": "7060041230",
+        "license": "http://creativecommons.org/publicdomain/zero/1.0/legalcode",
+        "institutionCode": "OS"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -123.57576,
+          44.1112
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000004,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041230:0004",
+        "gbifID": 4800000004,
+        "scientificName": "Rana aurora",
+        "taxonKey": 2426776,
+        "eventDate": "2022-10-16",
+        "year": 2022,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041230",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "iNaturalist"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -123.12269,
+          43.8232
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000005,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041230:0005",
+        "gbifID": 4800000005,
+        "scientificName": "Actinemys marmorata",
+        "taxonKey": 2443326,
+        "eventDate": "2023-01-21",
+        "year": 2023,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041230",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "ORBIC"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.66963,
+          44.2472
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000006,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041230:0006",
+        "gbifID": 4800000006,
+        "scientificName": "Margaritifera falcata",
+        "taxonKey": 2289460,
+        "eventDate": "2024-04-26",
+        "year": 2024,
+        "basisOfRecord": "PRESERVED_SPECIMEN",
+        "hybas_id": "7060041230",
+        "license": "http://creativecommons.org/publicdomain/zero/1.0/legalcode",
+        "institutionCode": "OS"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -123.40433,
+          43.9592
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000007,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041230:0007",
+        "gbifID": 4800000007,
+        "scientificName": "Cinclus mexicanus",
+        "taxonKey": 2495054,
+        "eventDate": "2025-07-03",
+        "year": 2025,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041230",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "iNaturalist"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.95127,
+          43.6712
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000008,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041230:0008",
+        "gbifID": 4800000008,
+        "scientificName": "Lontra canadensis",
+        "taxonKey": 2433745,
+        "eventDate": "2026-10-08",
+        "year": 2026,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041230",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "ORBIC"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.4982,
+          44.0952
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000009,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041230:0009",
+        "gbifID": 4800000009,
+        "scientificName": "Dicamptodon tenebrosus",
+        "taxonKey": 2431954,
+        "eventDate": "2019-01-13",
+        "year": 2019,
+        "basisOfRecord": "PRESERVED_SPECIMEN",
+        "hybas_id": "7060041230",
+        "license": "http://creativecommons.org/publicdomain/zero/1.0/legalcode",
+        "institutionCode": "OS"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -123.2329,
+          43.8072
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000010,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041230:0010",
+        "gbifID": 4800000010,
+        "scientificName": "Entosphenus tridentatus",
+        "taxonKey": 2421296,
+        "eventDate": "2020-04-18",
+        "year": 2020,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041230",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "iNaturalist"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.77984,
+          44.2312
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000011,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041230:0011",
+        "gbifID": 4800000011,
+        "scientificName": "Oncorhynchus tshawytscha",
+        "taxonKey": 5204029,
+        "eventDate": "2021-07-23",
+        "year": 2021,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041230",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "ORBIC"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -123.51453,
+          43.9432
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000012,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041230:0012",
+        "gbifID": 4800000012,
+        "scientificName": "Oncorhynchus mykiss",
+        "taxonKey": 5204019,
+        "eventDate": "2022-10-28",
+        "year": 2022,
+        "basisOfRecord": "PRESERVED_SPECIMEN",
+        "hybas_id": "7060041230",
+        "license": "http://creativecommons.org/publicdomain/zero/1.0/legalcode",
+        "institutionCode": "OS"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -123.06147,
+          43.6552
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000013,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041240:0013",
+        "gbifID": 4800000013,
+        "scientificName": "Rana aurora",
+        "taxonKey": 2426776,
+        "eventDate": "2021-06-08",
+        "year": 2021,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041240",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "ORBIC"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -123.14207,
+          44.97467
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000014,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041240:0014",
+        "gbifID": 4800000014,
+        "scientificName": "Actinemys marmorata",
+        "taxonKey": 2443326,
+        "eventDate": "2022-09-13",
+        "year": 2022,
+        "basisOfRecord": "PRESERVED_SPECIMEN",
+        "hybas_id": "7060041240",
+        "license": "http://creativecommons.org/publicdomain/zero/1.0/legalcode",
+        "institutionCode": "OS"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.71543,
+          44.65467
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000015,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041240:0015",
+        "gbifID": 4800000015,
+        "scientificName": "Margaritifera falcata",
+        "taxonKey": 2289460,
+        "eventDate": "2023-12-18",
+        "year": 2023,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041240",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "iNaturalist"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -123.40727,
+          44.33467
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000016,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041240:0016",
+        "gbifID": 4800000016,
+        "scientificName": "Cinclus mexicanus",
+        "taxonKey": 2495054,
+        "eventDate": "2024-03-23",
+        "year": 2024,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041240",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "ORBIC"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.98064,
+          44.80578
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000017,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041240:0017",
+        "gbifID": 4800000017,
+        "scientificName": "Lontra canadensis",
+        "taxonKey": 2433745,
+        "eventDate": "2025-06-28",
+        "year": 2025,
+        "basisOfRecord": "PRESERVED_SPECIMEN",
+        "hybas_id": "7060041240",
+        "license": "http://creativecommons.org/publicdomain/zero/1.0/legalcode",
+        "institutionCode": "OS"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.55401,
+          44.48578
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000018,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041240:0018",
+        "gbifID": 4800000018,
+        "scientificName": "Dicamptodon tenebrosus",
+        "taxonKey": 2431954,
+        "eventDate": "2026-09-05",
+        "year": 2026,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041240",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "iNaturalist"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -123.24584,
+          44.95689
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000019,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041240:0019",
+        "gbifID": 4800000019,
+        "scientificName": "Entosphenus tridentatus",
+        "taxonKey": 2421296,
+        "eventDate": "2019-12-10",
+        "year": 2019,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041240",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "ORBIC"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.81921,
+          44.63689
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000020,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041240:0020",
+        "gbifID": 4800000020,
+        "scientificName": "Oncorhynchus tshawytscha",
+        "taxonKey": 5204029,
+        "eventDate": "2020-03-15",
+        "year": 2020,
+        "basisOfRecord": "PRESERVED_SPECIMEN",
+        "hybas_id": "7060041240",
+        "license": "http://creativecommons.org/publicdomain/zero/1.0/legalcode",
+        "institutionCode": "OS"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -123.51105,
+          44.31689
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000021,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041240:0021",
+        "gbifID": 4800000021,
+        "scientificName": "Oncorhynchus mykiss",
+        "taxonKey": 5204019,
+        "eventDate": "2021-06-20",
+        "year": 2021,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041240",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "iNaturalist"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -123.08441,
+          44.788
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000022,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041240:0022",
+        "gbifID": 4800000022,
+        "scientificName": "Salvelinus confluentus",
+        "taxonKey": 2351283,
+        "eventDate": "2022-09-25",
+        "year": 2022,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041240",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "ORBIC"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.65778,
+          44.468
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000023,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041240:0023",
+        "gbifID": 4800000023,
+        "scientificName": "Rana aurora",
+        "taxonKey": 2426776,
+        "eventDate": "2023-12-02",
+        "year": 2023,
+        "basisOfRecord": "PRESERVED_SPECIMEN",
+        "hybas_id": "7060041240",
+        "license": "http://creativecommons.org/publicdomain/zero/1.0/legalcode",
+        "institutionCode": "OS"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -123.34962,
+          44.93911
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000024,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041240:0024",
+        "gbifID": 4800000024,
+        "scientificName": "Actinemys marmorata",
+        "taxonKey": 2443326,
+        "eventDate": "2024-03-07",
+        "year": 2024,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041240",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "iNaturalist"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.92299,
+          44.61911
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000025,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041250:0025",
+        "gbifID": 4800000025,
+        "scientificName": "Cinclus mexicanus",
+        "taxonKey": 2495054,
+        "eventDate": "2023-11-15",
+        "year": 2023,
+        "basisOfRecord": "PRESERVED_SPECIMEN",
+        "hybas_id": "7060041250",
+        "license": "http://creativecommons.org/publicdomain/zero/1.0/legalcode",
+        "institutionCode": "OS"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.04222,
+          43.74133
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000026,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041250:0026",
+        "gbifID": 4800000026,
+        "scientificName": "Lontra canadensis",
+        "taxonKey": 2433745,
+        "eventDate": "2024-02-20",
+        "year": 2024,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041250",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "iNaturalist"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -121.70998,
+          44.21244
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000027,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041250:0027",
+        "gbifID": 4800000027,
+        "scientificName": "Dicamptodon tenebrosus",
+        "taxonKey": 2431954,
+        "eventDate": "2025-05-25",
+        "year": 2025,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041250",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "ORBIC"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.24875,
+          43.89244
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000028,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041250:0028",
+        "gbifID": 4800000028,
+        "scientificName": "Entosphenus tridentatus",
+        "taxonKey": 2421296,
+        "eventDate": "2026-08-02",
+        "year": 2026,
+        "basisOfRecord": "PRESERVED_SPECIMEN",
+        "hybas_id": "7060041250",
+        "license": "http://creativecommons.org/publicdomain/zero/1.0/legalcode",
+        "institutionCode": "OS"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -121.91651,
+          44.36356
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000029,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041250:0029",
+        "gbifID": 4800000029,
+        "scientificName": "Oncorhynchus tshawytscha",
+        "taxonKey": 5204029,
+        "eventDate": "2019-11-07",
+        "year": 2019,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041250",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "iNaturalist"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.12304,
+          43.72356
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000030,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041250:0030",
+        "gbifID": 4800000030,
+        "scientificName": "Oncorhynchus mykiss",
+        "taxonKey": 5204019,
+        "eventDate": "2020-02-12",
+        "year": 2020,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041250",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "ORBIC"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -121.79079,
+          44.19467
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000031,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041250:0031",
+        "gbifID": 4800000031,
+        "scientificName": "Salvelinus confluentus",
+        "taxonKey": 2351283,
+        "eventDate": "2021-05-17",
+        "year": 2021,
+        "basisOfRecord": "PRESERVED_SPECIMEN",
+        "hybas_id": "7060041250",
+        "license": "http://creativecommons.org/publicdomain/zero/1.0/legalcode",
+        "institutionCode": "OS"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.32957,
+          43.87467
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000032,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041250:0032",
+        "gbifID": 4800000032,
+        "scientificName": "Rana aurora",
+        "taxonKey": 2426776,
+        "eventDate": "2022-08-22",
+        "year": 2022,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041250",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "iNaturalist"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -121.99732,
+          44.34578
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000033,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041250:0033",
+        "gbifID": 4800000033,
+        "scientificName": "Actinemys marmorata",
+        "taxonKey": 2443326,
+        "eventDate": "2023-11-27",
+        "year": 2023,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041250",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "ORBIC"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -121.66508,
+          44.02578
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000034,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041250:0034",
+        "gbifID": 4800000034,
+        "scientificName": "Margaritifera falcata",
+        "taxonKey": 2289460,
+        "eventDate": "2024-02-04",
+        "year": 2024,
+        "basisOfRecord": "PRESERVED_SPECIMEN",
+        "hybas_id": "7060041250",
+        "license": "http://creativecommons.org/publicdomain/zero/1.0/legalcode",
+        "institutionCode": "OS"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.20385,
+          43.70578
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000035,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041250:0035",
+        "gbifID": 4800000035,
+        "scientificName": "Cinclus mexicanus",
+        "taxonKey": 2495054,
+        "eventDate": "2025-05-09",
+        "year": 2025,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041250",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "iNaturalist"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -121.87161,
+          44.17689
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000036,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041250:0036",
+        "gbifID": 4800000036,
+        "scientificName": "Lontra canadensis",
+        "taxonKey": 2433745,
+        "eventDate": "2026-08-14",
+        "year": 2026,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041250",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "ORBIC"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.41038,
+          43.85689
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000037,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041260:0037",
+        "gbifID": 4800000037,
+        "scientificName": "Entosphenus tridentatus",
+        "taxonKey": 2421296,
+        "eventDate": "2025-04-22",
+        "year": 2025,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041260",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "iNaturalist"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -121.9559,
+          44.69916
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000038,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041260:0038",
+        "gbifID": 4800000038,
+        "scientificName": "Oncorhynchus tshawytscha",
+        "taxonKey": 5204029,
+        "eventDate": "2026-07-27",
+        "year": 2026,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041260",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "ORBIC"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.16947,
+          44.84271
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000039,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041260:0039",
+        "gbifID": 4800000039,
+        "scientificName": "Oncorhynchus mykiss",
+        "taxonKey": 5204019,
+        "eventDate": "2019-10-04",
+        "year": 2019,
+        "basisOfRecord": "PRESERVED_SPECIMEN",
+        "hybas_id": "7060041260",
+        "license": "http://creativecommons.org/publicdomain/zero/1.0/legalcode",
+        "institutionCode": "OS"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -121.8259,
+          44.53871
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000040,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041260:0040",
+        "gbifID": 4800000040,
+        "scientificName": "Salvelinus confluentus",
+        "taxonKey": 2351283,
+        "eventDate": "2020-01-09",
+        "year": 2020,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041260",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "iNaturalist"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.38304,
+          44.98627
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000041,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041260:0041",
+        "gbifID": 4800000041,
+        "scientificName": "Rana aurora",
+        "taxonKey": 2426776,
+        "eventDate": "2021-04-14",
+        "year": 2021,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041260",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "ORBIC"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.03947,
+          44.68227
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000042,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041260:0042",
+        "gbifID": 4800000042,
+        "scientificName": "Actinemys marmorata",
+        "taxonKey": 2443326,
+        "eventDate": "2022-07-19",
+        "year": 2022,
+        "basisOfRecord": "PRESERVED_SPECIMEN",
+        "hybas_id": "7060041260",
+        "license": "http://creativecommons.org/publicdomain/zero/1.0/legalcode",
+        "institutionCode": "OS"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.25304,
+          44.82582
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000043,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041260:0043",
+        "gbifID": 4800000043,
+        "scientificName": "Margaritifera falcata",
+        "taxonKey": 2289460,
+        "eventDate": "2023-10-24",
+        "year": 2023,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041260",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "iNaturalist"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -121.90947,
+          44.52182
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000044,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041260:0044",
+        "gbifID": 4800000044,
+        "scientificName": "Cinclus mexicanus",
+        "taxonKey": 2495054,
+        "eventDate": "2024-01-01",
+        "year": 2024,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041260",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "ORBIC"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.46661,
+          44.96938
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000045,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041260:0045",
+        "gbifID": 4800000045,
+        "scientificName": "Lontra canadensis",
+        "taxonKey": 2433745,
+        "eventDate": "2025-04-06",
+        "year": 2025,
+        "basisOfRecord": "PRESERVED_SPECIMEN",
+        "hybas_id": "7060041260",
+        "license": "http://creativecommons.org/publicdomain/zero/1.0/legalcode",
+        "institutionCode": "OS"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.12304,
+          44.66538
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000046,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041260:0046",
+        "gbifID": 4800000046,
+        "scientificName": "Dicamptodon tenebrosus",
+        "taxonKey": 2431954,
+        "eventDate": "2026-07-11",
+        "year": 2026,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041260",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "iNaturalist"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.33661,
+          44.80893
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000047,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041260:0047",
+        "gbifID": 4800000047,
+        "scientificName": "Entosphenus tridentatus",
+        "taxonKey": 2421296,
+        "eventDate": "2019-10-16",
+        "year": 2019,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041260",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "ORBIC"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -121.99304,
+          44.50493
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000048,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041260:0048",
+        "gbifID": 4800000048,
+        "scientificName": "Oncorhynchus tshawytscha",
+        "taxonKey": 5204029,
+        "eventDate": "2020-01-21",
+        "year": 2020,
+        "basisOfRecord": "PRESERVED_SPECIMEN",
+        "hybas_id": "7060041260",
+        "license": "http://creativecommons.org/publicdomain/zero/1.0/legalcode",
+        "institutionCode": "OS"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.20661,
+          44.64849
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000049,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041270:0049",
+        "gbifID": 4800000049,
+        "scientificName": "Salvelinus confluentus",
+        "taxonKey": 2351283,
+        "eventDate": "2019-09-01",
+        "year": 2019,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041270",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "ORBIC"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -121.86591,
+          45.51267
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000050,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041270:0050",
+        "gbifID": 4800000050,
+        "scientificName": "Rana aurora",
+        "taxonKey": 2426776,
+        "eventDate": "2020-12-06",
+        "year": 2020,
+        "basisOfRecord": "PRESERVED_SPECIMEN",
+        "hybas_id": "7060041270",
+        "license": "http://creativecommons.org/publicdomain/zero/1.0/legalcode",
+        "institutionCode": "OS"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.45367,
+          45.27267
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000051,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041270:0051",
+        "gbifID": 4800000051,
+        "scientificName": "Actinemys marmorata",
+        "taxonKey": 2443326,
+        "eventDate": "2021-03-11",
+        "year": 2021,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041270",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "iNaturalist"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -121.72877,
+          45.386
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000052,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041270:0052",
+        "gbifID": 4800000052,
+        "scientificName": "Margaritifera falcata",
+        "taxonKey": 2289460,
+        "eventDate": "2022-06-16",
+        "year": 2022,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041270",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "ORBIC"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.31652,
+          45.146
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000053,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041270:0053",
+        "gbifID": 4800000053,
+        "scientificName": "Cinclus mexicanus",
+        "taxonKey": 2495054,
+        "eventDate": "2023-09-21",
+        "year": 2023,
+        "basisOfRecord": "PRESERVED_SPECIMEN",
+        "hybas_id": "7060041270",
+        "license": "http://creativecommons.org/publicdomain/zero/1.0/legalcode",
+        "institutionCode": "OS"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -121.95407,
+          45.49933
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000054,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041270:0054",
+        "gbifID": 4800000054,
+        "scientificName": "Lontra canadensis",
+        "taxonKey": 2433745,
+        "eventDate": "2024-12-26",
+        "year": 2024,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041270",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "iNaturalist"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.54183,
+          45.25933
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000055,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041270:0055",
+        "gbifID": 4800000055,
+        "scientificName": "Dicamptodon tenebrosus",
+        "taxonKey": 2431954,
+        "eventDate": "2025-03-03",
+        "year": 2025,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041270",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "ORBIC"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -121.81693,
+          45.37267
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000056,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041270:0056",
+        "gbifID": 4800000056,
+        "scientificName": "Entosphenus tridentatus",
+        "taxonKey": 2421296,
+        "eventDate": "2026-06-08",
+        "year": 2026,
+        "basisOfRecord": "PRESERVED_SPECIMEN",
+        "hybas_id": "7060041270",
+        "license": "http://creativecommons.org/publicdomain/zero/1.0/legalcode",
+        "institutionCode": "OS"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.40469,
+          45.13267
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000057,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041270:0057",
+        "gbifID": 4800000057,
+        "scientificName": "Oncorhynchus tshawytscha",
+        "taxonKey": 5204029,
+        "eventDate": "2019-09-13",
+        "year": 2019,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041270",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "iNaturalist"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.04224,
+          45.486
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000058,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041270:0058",
+        "gbifID": 4800000058,
+        "scientificName": "Oncorhynchus mykiss",
+        "taxonKey": 5204019,
+        "eventDate": "2020-12-18",
+        "year": 2020,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041270",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "ORBIC"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -121.67979,
+          45.246
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000059,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041270:0059",
+        "gbifID": 4800000059,
+        "scientificName": "Salvelinus confluentus",
+        "taxonKey": 2351283,
+        "eventDate": "2021-03-23",
+        "year": 2021,
+        "basisOfRecord": "PRESERVED_SPECIMEN",
+        "hybas_id": "7060041270",
+        "license": "http://creativecommons.org/publicdomain/zero/1.0/legalcode",
+        "institutionCode": "OS"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -121.90509,
+          45.35933
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000060,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041270:0060",
+        "gbifID": 4800000060,
+        "scientificName": "Rana aurora",
+        "taxonKey": 2426776,
+        "eventDate": "2022-06-28",
+        "year": 2022,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041270",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "iNaturalist"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.49285,
+          45.11933
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000061,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041280:0061",
+        "gbifID": 4800000061,
+        "scientificName": "Margaritifera falcata",
+        "taxonKey": 2289460,
+        "eventDate": "2021-02-08",
+        "year": 2021,
+        "basisOfRecord": "PRESERVED_SPECIMEN",
+        "hybas_id": "7060041280",
+        "license": "http://creativecommons.org/publicdomain/zero/1.0/legalcode",
+        "institutionCode": "OS"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.99017,
+          45.77873
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000062,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041280:0062",
+        "gbifID": 4800000062,
+        "scientificName": "Cinclus mexicanus",
+        "taxonKey": 2495054,
+        "eventDate": "2022-05-13",
+        "year": 2022,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041280",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "iNaturalist"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -123.41966,
+          45.95629
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000063,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041280:0063",
+        "gbifID": 4800000063,
+        "scientificName": "Lontra canadensis",
+        "taxonKey": 2433745,
+        "eventDate": "2023-08-18",
+        "year": 2023,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041280",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "ORBIC"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.72874,
+          45.58029
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000064,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041280:0064",
+        "gbifID": 4800000064,
+        "scientificName": "Dicamptodon tenebrosus",
+        "taxonKey": 2431954,
+        "eventDate": "2024-11-23",
+        "year": 2024,
+        "basisOfRecord": "PRESERVED_SPECIMEN",
+        "hybas_id": "7060041280",
+        "license": "http://creativecommons.org/publicdomain/zero/1.0/legalcode",
+        "institutionCode": "OS"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -123.15823,
+          45.75784
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000065,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041280:0065",
+        "gbifID": 4800000065,
+        "scientificName": "Entosphenus tridentatus",
+        "taxonKey": 2421296,
+        "eventDate": "2025-02-28",
+        "year": 2025,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041280",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "iNaturalist"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -121.77639,
+          45.9354
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000066,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041280:0066",
+        "gbifID": 4800000066,
+        "scientificName": "Oncorhynchus tshawytscha",
+        "taxonKey": 5204029,
+        "eventDate": "2026-05-05",
+        "year": 2026,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041280",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "ORBIC"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.8968,
+          45.5594
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000067,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041280:0067",
+        "gbifID": 4800000067,
+        "scientificName": "Oncorhynchus mykiss",
+        "taxonKey": 5204019,
+        "eventDate": "2019-08-10",
+        "year": 2019,
+        "basisOfRecord": "PRESERVED_SPECIMEN",
+        "hybas_id": "7060041280",
+        "license": "http://creativecommons.org/publicdomain/zero/1.0/legalcode",
+        "institutionCode": "OS"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -123.32629,
+          45.73696
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000068,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041280:0068",
+        "gbifID": 4800000068,
+        "scientificName": "Salvelinus confluentus",
+        "taxonKey": 2351283,
+        "eventDate": "2020-11-15",
+        "year": 2020,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041280",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "iNaturalist"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.63537,
+          45.36096
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000069,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041280:0069",
+        "gbifID": 4800000069,
+        "scientificName": "Rana aurora",
+        "taxonKey": 2426776,
+        "eventDate": "2021-02-20",
+        "year": 2021,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041280",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "ORBIC"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -121.94446,
+          45.91451
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000070,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041280:0070",
+        "gbifID": 4800000070,
+        "scientificName": "Actinemys marmorata",
+        "taxonKey": 2443326,
+        "eventDate": "2022-05-25",
+        "year": 2022,
+        "basisOfRecord": "PRESERVED_SPECIMEN",
+        "hybas_id": "7060041280",
+        "license": "http://creativecommons.org/publicdomain/zero/1.0/legalcode",
+        "institutionCode": "OS"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -123.06486,
+          45.53851
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000071,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041280:0071",
+        "gbifID": 4800000071,
+        "scientificName": "Margaritifera falcata",
+        "taxonKey": 2289460,
+        "eventDate": "2023-08-02",
+        "year": 2023,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041280",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "iNaturalist"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -123.49435,
+          45.71607
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": 4800000072,
+      "properties": {
+        "occurrenceID": "urn:basinmap:demo:7060041280:0072",
+        "gbifID": 4800000072,
+        "scientificName": "Cinclus mexicanus",
+        "taxonKey": 2495054,
+        "eventDate": "2024-11-07",
+        "year": 2024,
+        "basisOfRecord": "HUMAN_OBSERVATION",
+        "hybas_id": "7060041280",
+        "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+        "institutionCode": "ORBIC"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -122.80343,
+          45.34007
+        ]
+      }
+    }
+  ]
+}

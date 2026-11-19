@@ -1,0 +1,23 @@
+{
+  "doi": "10.15468/dl.basinmap-demo-2026",
+  "downloadKey": "0012345-261118120000000",
+  "created": "2026-11-18T12:00:00Z",
+  "status": "SUCCEEDED",
+  "format": "SIMPLE_CSV",
+  "license": "http://creativecommons.org/licenses/by/4.0/legalcode",
+  "query": {
+    "geometry": "POLYGON((-123.8 43.5, -121.5 43.5, -121.5 46.2, -123.8 46.2, -123.8 43.5))",
+    "hasCoordinate": true,
+    "hasGeospatialIssue": false,
+    "occurrenceStatus": "PRESENT",
+    "year": "2018,2026"
+  },
+  "totalRecords": 72,
+  "citations": [
+    {
+      "citation": "GBIF.org (18 November 2026) GBIF Occurrence Download https://doi.org/10.15468/dl.basinmap-demo-2026",
+      "doi": "10.15468/dl.basinmap-demo-2026"
+    }
+  ],
+  "notes": "Self-contained synthetic demonstration dataset for the basinmap.org spatial pilot."
+}

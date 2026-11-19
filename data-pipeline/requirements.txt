@@ -1,0 +1,5 @@
+# Pure Python 3.9+ standard library only — zero external packages required for the pilot pipeline.
+# Optional tools for full 50-100 GB production datasets (external CLI dependencies, not pip-installed):
+#   - tippecanoe (vector tiling from GeoJSONSeq)
+#   - pmtiles CLI (archive inspection / conversion)
+#   - gdal / ogr2ogr + duckdb (spatial joins and GeoParquet aggregation)

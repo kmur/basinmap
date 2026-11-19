@@ -1,0 +1,133 @@
+{
+  "schema_version": "1.0.0",
+  "current_version": "v0.1.0-demo",
+  "previous_version": null,
+  "generated_at": "2026-11-19T20:33:27Z",
+  "provenance": {
+    "gbif_doi": "10.15468/dl.basinmap-demo-2026",
+    "gbif_download_key": "0012345-261118120000000",
+    "gbif_download_created": "2026-11-18T12:00:00Z",
+    "gbif_query": {
+      "geometry": "POLYGON((-123.8 43.5, -121.5 43.5, -121.5 46.2, -123.8 46.2, -123.8 43.5))",
+      "hasCoordinate": true,
+      "hasGeospatialIssue": false,
+      "occurrenceStatus": "PRESENT",
+      "year": "2018,2026"
+    },
+    "citations": [
+      {
+        "citation": "GBIF.org (18 November 2026) GBIF Occurrence Download https://doi.org/10.15468/dl.basinmap-demo-2026",
+        "doi": "10.15468/dl.basinmap-demo-2026"
+      }
+    ],
+    "sources": {
+      "gbif_download_metadata.json": {
+        "sha256": "156ce36dd095e90f47364b32ae8c93de1e60f1ddd110be3762d28ee1270bafd5",
+        "bytes": 798
+      },
+      "hydrobasins_l6.geojson": {
+        "sha256": "433f82bc726bacd82310710b0eac18f023621f66efc5aa197a5e886b01a90394",
+        "bytes": 6242
+      },
+      "gbif_occurrences.tsv": {
+        "sha256": "e73cb2eed95e6134c012e039d87921b53e94092ec75d4d4e3f9a5a59c4f2d196",
+        "bytes": 26688
+      }
+    }
+  },
+  "spatial_coverage": {
+    "crs": "EPSG:4326",
+    "bbox": [
+      -123.6,
+      43.6,
+      -121.62,
+      46.02
+    ],
+    "center": [
+      -122.61,
+      44.81
+    ]
+  },
+  "counts": {
+    "occurrences": 72,
+    "species": 10,
+    "basins": 6
+  },
+  "attribution": "GBIF.org (10.15468/dl.basinmap-demo-2026); HydroSHEDS / HydroBASINS Level 6",
+  "licenses": [
+    "http://creativecommons.org/licenses/by/4.0/legalcode",
+    "http://creativecommons.org/publicdomain/zero/1.0/legalcode"
+  ],
+  "layers": {
+    "basins": {
+      "format": "pmtiles",
+      "source_layer": "basins",
+      "path": "/releases/v0.1.0-demo/basins.pmtiles",
+      "geojson_path": "/releases/v0.1.0-demo/basins.geojson",
+      "sha256": "8dc866bbf278bcd01ecf8c4fe34529753eb2e4e0e11f0b89fc51f60f1109daca",
+      "bytes": 9545,
+      "min_zoom": 0,
+      "max_zoom": 8,
+      "tiles": 16,
+      "cache_control": "public, max-age=31536000, immutable"
+    },
+    "occurrences": {
+      "format": "pmtiles",
+      "source_layer": "occurrences",
+      "path": "/releases/v0.1.0-demo/occurrences.pmtiles",
+      "geojson_path": "/releases/v0.1.0-demo/occurrences.geojson",
+      "sha256": "d220ae6eb3eb20026daa5555c7d5465979ca46ec39c90669ff0bd631d34385f6",
+      "bytes": 54750,
+      "min_zoom": 0,
+      "max_zoom": 10,
+      "tiles": 66,
+      "cache_control": "public, max-age=31536000, immutable"
+    },
+    "basin_shards_template": "/releases/v0.1.0-demo/basins/{hybas_id}.json",
+    "basin_shards": [
+      {
+        "hybas_id": "7060041230",
+        "path": "/releases/v0.1.0-demo/basins/7060041230.json",
+        "sha256": "29fde635300f8a240b4ebc2935664f25c064c46fa4f79a5d7e0a3e0a86ee20a7",
+        "bytes": 3732
+      },
+      {
+        "hybas_id": "7060041240",
+        "path": "/releases/v0.1.0-demo/basins/7060041240.json",
+        "sha256": "564f95236f103d145a02a5af4441aab0a5e49085963658004c61335c0cbcf38c",
+        "bytes": 3735
+      },
+      {
+        "hybas_id": "7060041250",
+        "path": "/releases/v0.1.0-demo/basins/7060041250.json",
+        "sha256": "f5afe4522bdf129f69034f95d59bd03f6791d165fda59fa275fdf3a929329aaf",
+        "bytes": 3730
+      },
+      {
+        "hybas_id": "7060041260",
+        "path": "/releases/v0.1.0-demo/basins/7060041260.json",
+        "sha256": "86d670c95f1eda8c9557a6658a575eb1fe26264fba39d97f2d54e667bf0aec6e",
+        "bytes": 3732
+      },
+      {
+        "hybas_id": "7060041270",
+        "path": "/releases/v0.1.0-demo/basins/7060041270.json",
+        "sha256": "59a006e7a802ac14f70afb890a869fb623d0090b86aeeb87fcc973d6aaa0e4e8",
+        "bytes": 3734
+      },
+      {
+        "hybas_id": "7060041280",
+        "path": "/releases/v0.1.0-demo/basins/7060041280.json",
+        "sha256": "ce64282e9e109a8bec18835434c82db8423bdab76dcfb92e9cc5ab2481a500ad",
+        "bytes": 3758
+      }
+    ]
+  },
+  "overlays": {
+    "approved_observations": {
+      "format": "geojson",
+      "path": "/overlays/approved.geojson",
+      "cache_control": "public, max-age=60, must-revalidate"
+    }
+  }
+}
