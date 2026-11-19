@@ -98,4 +98,16 @@ jobs:
           fi
 
       - name: Deploy Worker API and Static Assets (${{ env.CF_ENV }})
-        run: npx wrangler deploy ${WRANGLER_ENV_FLAG}
+        run: |
+          python3 -c '
+          import pathlib
+          cli = pathlib.Path("node_modules/wrangler/wrangler-dist/cli.js")
+          if cli.exists():
+              txt = cli.read_text(encoding="utf-8")
+              old = "async function getWorkerSubdomain(complianceConfig, accountId, workerName) {\n\tconst worker = await retryOnAPIFailure(() => fetchResult$3(complianceConfig, `/accounts/${accountId}/workers/workers/${workerName}`), logger$5);"
+              new = "async function getWorkerSubdomain(complianceConfig, accountId, workerName) {\n\tlet worker;\n\ttry {\n\t\tworker = await retryOnAPIFailure(() => fetchResult$3(complianceConfig, `/accounts/${accountId}/workers/workers/${workerName}`), logger$5);\n\t} catch (e) {\n\t\tif (e && typeof e === \"object\" && e.code === 10007) return { enabled: false, previews_enabled: false };\n\t\tthrow e;\n\t}"
+              if old in txt:
+                  cli.write_text(txt.replace(old, new, 1), encoding="utf-8")
+                  print("Patched getWorkerSubdomain 10007 handling in wrangler cli.js")
+          '
+          npx wrangler deploy ${WRANGLER_ENV_FLAG} || (sleep 5 && npx wrangler deploy ${WRANGLER_ENV_FLAG})

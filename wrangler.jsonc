@@ -3,6 +3,8 @@
   "name": "basinmap",
   "main": "src/worker/index.ts",
   "compatibility_date": "2026-11-01",
+  "workers_dev": false,
+  "preview_urls": false,
   "routes": [
     {
       "pattern": "basinmap.org",
@@ -46,6 +48,8 @@
     },
     "staging": {
       "name": "basinmap-staging",
+      "workers_dev": false,
+      "preview_urls": false,
       "routes": [
         {
           "pattern": "staging.basinmap.org",
