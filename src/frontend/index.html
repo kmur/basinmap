@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>basinmap.org — Hydrological Basin Biodiversity Atlas</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"
+      crossorigin="anonymous"
+    />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="top-bar">
+        <div class="brand-group">
+          <h1 class="brand-title">basinmap.org</h1>
+          <span class="brand-subtitle">Open Hydrological Basin Web-GIS &amp; GBIF Portal</span>
+        </div>
+        <div class="status-pills">
+          <span id="badge-version" class="pill">Release: loading...</span>
+          <a id="badge-doi" class="pill pill-link" href="https://www.gbif.org" target="_blank" rel="noopener noreferrer">
+            GBIF DOI: —
+          </a>
+          <span id="badge-range" class="pill">Range 206: checking...</span>
+          <span id="badge-api" class="pill">API: checking...</span>
+        </div>
+      </header>
+
+      <div id="api-offline-banner" class="banner hidden" role="status">
+        <span>
+          <strong>Submission API unavailable:</strong> Static map layers and basin biodiversity
+          analytics remain active from R2 storage. New observation submissions are temporarily offline.
+        </span>
+      </div>
+
+      <div class="workspace">
+        <aside class="sidebar" aria-label="Map Layers and Filters">
+          <section class="panel-card">
+            <h2>Layers</h2>
+            <label class="layer-toggle">
+              <input id="toggle-basins" type="checkbox" checked />
+              <span>
+                HydroBASINS Level 6
+                <small>PMTiles choropleth with scalar totals</small>
+              </span>
+            </label>
+            <label class="layer-toggle">
+              <input id="toggle-occurrences" type="checkbox" checked />
+              <span>
+                GBIF Snapshot Occurrences
+                <small>Versioned immutable PMTiles layer</small>
+              </span>
+            </label>
+            <label class="layer-toggle">
+              <input id="toggle-approved" type="checkbox" checked />
+              <span>
+                Approved Local Observations
+                <small>Pending GBIF indexing (deduplicated)</small>
+              </span>
+            </label>
+          </section>
+
+          <section class="panel-card">
+            <h2>Display &amp; Filters</h2>
+            <div class="form-row">
+              <label for="select-metric">Basin Choropleth Metric</label>
+              <select id="select-metric">
+                <option value="occurrence_count">Total Occurrences</option>
+                <option value="species_count">Species Richness</option>
+                <option value="threatened_count">Threatened Records (CR/EN/VU/NT)</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label for="filter-species">Filter Species</label>
+              <select id="filter-species">
+                <option value="">All species</option>
+              </select>
+            </div>
+            <div class="form-row">
+              <label>Year Range</label>
+              <div class="year-pair">
+                <input id="filter-year-min" type="number" min="1900" max="2030" value="2018" aria-label="Minimum year" />
+                <input id="filter-year-max" type="number" min="1900" max="2030" value="2026" aria-label="Maximum year" />
+              </div>
+            </div>
+          </section>
+
+          <section class="panel-card" id="provenance-card">
+            <h2>Provenance &amp; Licensing</h2>
+            <p class="muted-note" id="provenance-text">Loading release manifest...</p>
+          </section>
+        </aside>
+
+        <main class="map-viewport" aria-label="Interactive Basin Map">
+          <div id="maplibre-container"></div>
+          <div id="svg-map-container" class="hidden"></div>
+          <div class="map-overlay-hud">
+            <div class="hud-box" id="hud-engine">Map engine: initializing...</div>
+            <div class="hud-box">
+              <span class="legend-swatch" style="background: #2d6a4f"></span>Basins
+              &nbsp;
+              <span class="legend-swatch" style="background: #0284c7; border-radius: 50%"></span>GBIF Snapshot
+              &nbsp;
+              <span class="legend-swatch" style="background: #d97706; border-radius: 50%"></span>Approved Local
+            </div>
+          </div>
+        </main>
+
+        <aside class="inspector" aria-label="Basin and Occurrence Details">
+          <section class="panel-card" id="basin-inspector">
+            <h2>Selected Basin</h2>
+            <div id="basin-scalars">
+              <p class="muted-note">Click any HydroBASINS polygon to view pre-aggregated counts and load its species shard.</p>
+            </div>
+            <div id="basin-shard-details"></div>
+          </section>
+
+          <section class="panel-card" id="occurrence-inspector">
+            <h2>Selected Occurrence</h2>
+            <div id="occurrence-details">
+              <p class="muted-note">Click an occurrence point on the map to inspect its verbatim metadata and publication status.</p>
+            </div>
+          </section>
+        </aside>
+      </div>
+    </div>
+
+    <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/pmtiles@3.2.0/dist/pmtiles.js" crossorigin="anonymous"></script>
+    <script type="module" src="/assets/app.js"></script>
+  </body>
+</html>

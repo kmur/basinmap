@@ -1,0 +1,24 @@
+{
+  "name": "basinmap",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Open Web-GIS and GBIF publishing platform for hydrological basins (basinmap.org)",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "python3 scripts/build_dist.py",
+    "dev": "python3 scripts/build_dist.py && wrangler dev --env development",
+    "dev:local": "python3 scripts/build_dist.py && python3 scripts/dev_server.py",
+    "deploy": "python3 scripts/build_dist.py && wrangler deploy",
+    "test": "python3 -m unittest discover -s data-pipeline/tests -v && python3 -m unittest discover -s tests -v"
+  },
+  "dependencies": {
+    "maplibre-gl": "^4.7.1",
+    "pmtiles": "^3.2.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20261101.0",
+    "typescript": "^5.6.3",
+    "wrangler": "^3.90.0"
+  }
+}
