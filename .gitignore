@@ -5,3 +5,7 @@ __pycache__/
 node_modules/
 dist/
 .wrangler/
+.local-data/
+private-r2/
+public-r2/media/
+public-r2/exports/
