@@ -365,7 +365,7 @@ function renderSvgMapFallback(): void {
     </svg>
   `;
 
-  container.querySelectorAll(".svg-basin").forEach((el) => {
+  container.querySelectorAll(".svg-basin").forEach((el: Element) => {
     el.addEventListener("click", () => {
       const idx = Number(el.getAttribute("data-basin-idx"));
       const feat = state.basinsGeojson[idx];
@@ -375,7 +375,7 @@ function renderSvgMapFallback(): void {
     });
   });
 
-  container.querySelectorAll(".svg-occ").forEach((el) => {
+  container.querySelectorAll(".svg-occ").forEach((el: Element) => {
     el.addEventListener("click", (evt: Event) => {
       evt.stopPropagation();
       const occId = el.getAttribute("data-occ-id");
