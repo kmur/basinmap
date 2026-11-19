@@ -188,7 +188,7 @@ async function rebuildApprovedOverlay(db: D1Database, publicBucket: R2Bucket): P
     )
     .all<Record<string, unknown>>();
 
-  const features = [];
+  const features: Array<Record<string, unknown>> = [];
   for (const row of results) {
     const mediaRes = await db
       .prepare(

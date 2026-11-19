@@ -170,6 +170,7 @@ def publish_release(
                 "object",
                 "put",
                 f"{bucket}/{item['key']}",
+                "--remote",
                 "--file",
                 item["local_path"],
                 "--cache-control",
