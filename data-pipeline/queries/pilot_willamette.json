@@ -1,0 +1,26 @@
+{
+  "description": "Stage 4 pilot: Willamette River basin, Oregon (same extent as v0.1.0-demo). Georeferenced, present, non-fossil/non-living-specimen GBIF records 2015-2025. Run `ingest_gbif_download.py count` first; narrow `year` if the count exceeds --max-records.",
+  "request": {
+    "format": "SIMPLE_CSV",
+    "predicate": {
+      "type": "and",
+      "predicates": [
+        {"type": "within", "geometry": "POLYGON((-123.8 43.5,-121.5 43.5,-121.5 46.2,-123.8 46.2,-123.8 43.5))"},
+        {"type": "equals", "key": "HAS_COORDINATE", "value": "true"},
+        {"type": "equals", "key": "HAS_GEOSPATIAL_ISSUE", "value": "false"},
+        {"type": "equals", "key": "OCCURRENCE_STATUS", "value": "PRESENT"},
+        {"type": "in", "key": "BASIS_OF_RECORD", "values": ["HUMAN_OBSERVATION", "MACHINE_OBSERVATION", "OBSERVATION", "OCCURRENCE", "PRESERVED_SPECIMEN", "MATERIAL_SAMPLE", "MATERIAL_CITATION"]},
+        {"type": "greaterThanOrEquals", "key": "YEAR", "value": "2015"},
+        {"type": "lessThanOrEquals", "key": "YEAR", "value": "2025"}
+      ]
+    }
+  },
+  "search_params": {
+    "geometry": "POLYGON((-123.8 43.5,-121.5 43.5,-121.5 46.2,-123.8 46.2,-123.8 43.5))",
+    "hasCoordinate": true,
+    "hasGeospatialIssue": false,
+    "occurrenceStatus": "PRESENT",
+    "basisOfRecord": ["HUMAN_OBSERVATION", "MACHINE_OBSERVATION", "OBSERVATION", "OCCURRENCE", "PRESERVED_SPECIMEN", "MATERIAL_SAMPLE", "MATERIAL_CITATION"],
+    "year": "2015,2025"
+  }
+}

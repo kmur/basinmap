@@ -7,7 +7,9 @@ import {
   GeoJsonFeature,
   OccurrenceProperties,
   ReleaseManifest,
+  basinShardPath,
   deduplicateApprovedOverlay,
+  layerPartitions,
   parsePmtilesHeaderBytes,
   resolveDataUrl,
 } from "./types.js";
@@ -28,6 +30,13 @@ interface AppState {
   showApproved: boolean;
   mapInstance: any;
   usingMapLibre: boolean;
+  mapLayerIds: {
+    basinsFill: string[];
+    basinsOutline: string[];
+    occurrences: string[];
+    bins: string[];
+  };
+  snapshotOwnIds: Set<string>;
 }
 
 const state: AppState = {
@@ -46,7 +55,31 @@ const state: AppState = {
   showApproved: true,
   mapInstance: null,
   usingMapLibre: false,
+  mapLayerIds: { basinsFill: [], basinsOutline: [], occurrences: [], bins: [] },
+  snapshotOwnIds: new Set<string>(),
 };
+
+/** Log-scaled basin colour ramp so real release counts (1 to 100k+) stay legible. */
+function basinFillExpression(): any[] {
+  const maxVal = Math.max(
+    14,
+    ...state.basinsGeojson.map((f) => Number((f.properties as any)[state.selectedMetric] || 0))
+  );
+  const top = Math.log(maxVal + 1);
+  return [
+    "interpolate",
+    ["linear"],
+    ["ln", ["+", 1, ["to-number", ["get", state.selectedMetric], 0]]],
+    0,
+    "#d8f3dc",
+    top * 0.4,
+    "#95d5b2",
+    top * 0.7,
+    "#52b788",
+    top,
+    "#1b4332",
+  ];
+}
 
 function getEl(id: string): any {
   return document.getElementById(id);
@@ -169,11 +202,13 @@ async function loadAndRenderBasinShard(props: BasinScalarProperties): Promise<vo
   const shardEl = getEl("basin-shard-details");
   if (!shardEl || !state.manifest) return;
 
-  shardEl.innerHTML = `<p class="muted-note" style="margin-top:0.6rem;">Loading species shard <code>${escapeHtml(props.hybas_id)}.json</code>...</p>`;
-
-  const template = state.manifest.layers.basin_shards_template;
-  const shardPath = template.replace("{hybas_id}", props.hybas_id);
+  const shardPath = basinShardPath(state.manifest, props.hybas_id, props.shard_path);
   const shardUrl = resolveDataUrl(state.publicDataUrl, shardPath);
+  if (!shardPath.endsWith(".json")) {
+    shardEl.innerHTML = `<p class="muted-note" style="margin-top:0.6rem;">Detailed checklist for this sub-basin is in the regional partition <a href="${escapeHtml(shardUrl)}">${escapeHtml(shardPath.split("/").pop())}</a> (SQLite, table <code>basin_shards</code>).</p>`;
+    return;
+  }
+  shardEl.innerHTML = `<p class="muted-note" style="margin-top:0.6rem;">Loading species shard <code>${escapeHtml(props.hybas_id)}.json</code>...</p>`;
 
   try {
     const shard: BasinShardPayload = await fetchJsonWithTimeout(shardUrl, 5000);
@@ -402,12 +437,105 @@ function initMapLibreIfAvailable(): boolean {
     const protocol = new pmtilesLib.Protocol();
     maplibre.addProtocol("pmtiles", protocol.tile);
 
-    const basinsPmtilesUrl = resolveDataUrl(state.publicDataUrl, manifest.layers.basins.path);
-    const occPmtilesUrl = resolveDataUrl(state.publicDataUrl, manifest.layers.occurrences.path);
     const approvedUrl = resolveDataUrl(
       state.publicDataUrl,
       manifest.overlays.approved_observations.path
     );
+
+    // One vector source per CDN-size partition (< 500 MB each, see release manifest).
+    const sources: Record<string, any> = {};
+    const rasterLayers: any[] = [];
+    const basinLayers: any[] = [];
+    const occLayers: any[] = [];
+    const ids = { basinsFill: [] as string[], basinsOutline: [] as string[], occurrences: [] as string[], bins: [] as string[] };
+    const sourceSpec = (path: string, part: { min_zoom: number; max_zoom: number; bounds?: number[] }) => {
+      const spec: any = {
+        url: `pmtiles://${resolveDataUrl(state.publicDataUrl, path)}`,
+        minzoom: part.min_zoom,
+        maxzoom: part.max_zoom,
+        attribution: manifest.attribution,
+      };
+      if (part.bounds) spec.bounds = part.bounds;
+      return spec;
+    };
+
+    (manifest.layers.rasters || []).forEach((raster) => {
+      layerPartitions(raster).forEach((part, i) => {
+        const sid = `raster-${raster.id}-${i}`;
+        sources[sid] = { type: "raster", tileSize: raster.tile_size || 256, ...sourceSpec(part.path, part), attribution: raster.attribution };
+        rasterLayers.push({ id: `${sid}-layer`, type: "raster", source: sid, paint: { "raster-opacity": 0.55 } });
+      });
+    });
+
+    layerPartitions(manifest.layers.basins).forEach((part, i) => {
+      const sid = `basins-${i}`;
+      sources[sid] = { type: "vector", ...sourceSpec(part.path, part) };
+      const fillId = i === 0 ? "basins-fill" : `basins-fill-${i}`;
+      const outlineId = i === 0 ? "basins-outline" : `basins-outline-${i}`;
+      ids.basinsFill.push(fillId);
+      ids.basinsOutline.push(outlineId);
+      basinLayers.push(
+        {
+          id: fillId,
+          type: "fill",
+          source: sid,
+          "source-layer": "basins",
+          paint: { "fill-color": basinFillExpression(), "fill-opacity": 0.78 },
+        },
+        {
+          id: outlineId,
+          type: "line",
+          source: sid,
+          "source-layer": "basins",
+          paint: { "line-color": "#0b2538", "line-width": ["interpolate", ["linear"], ["zoom"], 4, 0.4, 10, 1.6] },
+        }
+      );
+    });
+
+    layerPartitions(manifest.layers.occurrences).forEach((part, i) => {
+      const sid = `occurrences-${i}`;
+      sources[sid] = { type: "vector", ...sourceSpec(part.path, part) };
+      const binId = `occurrence-bins-${i}`;
+      const occId = i === 0 ? "occurrences-circle" : `occurrences-circle-${i}`;
+      ids.bins.push(binId);
+      ids.occurrences.push(occId);
+      occLayers.push(
+        {
+          id: binId,
+          type: "circle",
+          source: sid,
+          "source-layer": "occurrence_bins",
+          paint: {
+            "circle-radius": ["interpolate", ["linear"], ["ln", ["+", 1, ["get", "count"]]], 0, 2.5, 10, 14],
+            "circle-color": "#0284c7",
+            "circle-opacity": 0.55,
+            "circle-stroke-color": "#ffffff",
+            "circle-stroke-width": 0.6,
+          },
+        },
+        {
+          id: occId,
+          type: "circle",
+          source: sid,
+          "source-layer": "occurrences",
+          paint: {
+            "circle-radius": ["interpolate", ["linear"], ["zoom"], 8, 2.5, 13, 5],
+            "circle-color": "#0284c7",
+            "circle-stroke-color": "#ffffff",
+            "circle-stroke-width": 1.2,
+          },
+        }
+      );
+    });
+    state.mapLayerIds = ids;
+
+    sources.approved = {
+      type: "geojson",
+      data: {
+        type: "FeatureCollection",
+        features: state.approvedOccurrences,
+      },
+    };
 
     const map = new maplibre.Map({
       container: "maplibre-container",
@@ -415,75 +543,16 @@ function initMapLibreIfAvailable(): boolean {
       fitBoundsOptions: { padding: 36 },
       style: {
         version: 8,
-        sources: {
-          basins: {
-            type: "vector",
-            url: `pmtiles://${basinsPmtilesUrl}`,
-            attribution: manifest.attribution,
-          },
-          occurrences: {
-            type: "vector",
-            url: `pmtiles://${occPmtilesUrl}`,
-            attribution: manifest.attribution,
-          },
-          approved: {
-            type: "geojson",
-            data: {
-              type: "FeatureCollection",
-              features: state.approvedOccurrences,
-            },
-          },
-        },
+        sources,
         layers: [
           {
             id: "background",
             type: "background",
             paint: { "background-color": "#d9e8f2" },
           },
-          {
-            id: "basins-fill",
-            type: "fill",
-            source: "basins",
-            "source-layer": "basins",
-            paint: {
-              "fill-color": [
-                "interpolate",
-                ["linear"],
-                ["get", state.selectedMetric],
-                0,
-                "#d8f3dc",
-                6,
-                "#95d5b2",
-                10,
-                "#52b788",
-                14,
-                "#1b4332",
-              ],
-              "fill-opacity": 0.78,
-            },
-          },
-          {
-            id: "basins-outline",
-            type: "line",
-            source: "basins",
-            "source-layer": "basins",
-            paint: {
-              "line-color": "#0b2538",
-              "line-width": 1.6,
-            },
-          },
-          {
-            id: "occurrences-circle",
-            type: "circle",
-            source: "occurrences",
-            "source-layer": "occurrences",
-            paint: {
-              "circle-radius": 5,
-              "circle-color": "#0284c7",
-              "circle-stroke-color": "#ffffff",
-              "circle-stroke-width": 1.2,
-            },
-          },
+          ...rasterLayers,
+          ...basinLayers,
+          ...occLayers,
           {
             id: "approved-circle",
             type: "circle",
@@ -499,18 +568,28 @@ function initMapLibreIfAvailable(): boolean {
       },
     });
 
-    map.on("click", "basins-fill", (e: any) => {
-      const feature = e.features && e.features[0];
-      if (feature && feature.properties) {
-        loadAndRenderBasinShard(feature.properties as BasinScalarProperties);
-      }
+    ids.basinsFill.forEach((layerId) => {
+      map.on("click", layerId, (e: any) => {
+        const feature = e.features && e.features[0];
+        if (feature && feature.properties) {
+          loadAndRenderBasinShard(feature.properties as BasinScalarProperties);
+        }
+      });
     });
 
-    map.on("click", "occurrences-circle", (e: any) => {
-      const feature = e.features && e.features[0];
-      if (feature && feature.properties) {
-        renderOccurrenceDetails(feature.properties as OccurrenceProperties, false);
-      }
+    ids.occurrences.forEach((layerId) => {
+      map.on("click", layerId, (e: any) => {
+        const feature = e.features && e.features[0];
+        if (feature && feature.properties) {
+          renderOccurrenceDetails(feature.properties as OccurrenceProperties, false);
+        }
+      });
+    });
+
+    ids.bins.forEach((layerId) => {
+      map.on("click", layerId, (e: any) => {
+        map.easeTo({ center: e.lngLat, zoom: Math.min(map.getZoom() + 2, (manifest.layers.occurrence_bins_max_zoom ?? 8) + 1) });
+      });
     });
 
     map.on("click", "approved-circle", (e: any) => {
@@ -555,22 +634,11 @@ function syncMapFiltersAndLayers(): void {
     const occVis = state.showOccurrences ? "visible" : "none";
     const appVis = state.showApproved ? "visible" : "none";
 
-    if (map.getLayer("basins-fill")) {
-      map.setLayoutProperty("basins-fill", "visibility", basinVis);
-      map.setLayoutProperty("basins-outline", "visibility", basinVis);
-      map.setPaintProperty("basins-fill", "fill-color", [
-        "interpolate",
-        ["linear"],
-        ["get", state.selectedMetric],
-        0,
-        "#d8f3dc",
-        6,
-        "#95d5b2",
-        10,
-        "#52b788",
-        14,
-        "#1b4332",
-      ]);
+    for (const layerId of [...state.mapLayerIds.basinsFill, ...state.mapLayerIds.basinsOutline]) {
+      if (map.getLayer(layerId)) map.setLayoutProperty(layerId, "visibility", basinVis);
+    }
+    for (const layerId of state.mapLayerIds.basinsFill) {
+      if (map.getLayer(layerId)) map.setPaintProperty(layerId, "fill-color", basinFillExpression());
     }
 
     const filterExpr: any[] = [
@@ -582,9 +650,17 @@ function syncMapFiltersAndLayers(): void {
       filterExpr.push(["==", ["get", "scientificName"], state.selectedSpecies]);
     }
 
-    if (map.getLayer("occurrences-circle")) {
-      map.setLayoutProperty("occurrences-circle", "visibility", occVis);
-      map.setFilter("occurrences-circle", filterExpr);
+    for (const layerId of state.mapLayerIds.occurrences) {
+      if (map.getLayer(layerId)) {
+        map.setLayoutProperty(layerId, "visibility", occVis);
+        map.setFilter(layerId, filterExpr);
+      }
+    }
+    // Aggregated bins carry counts only; hide them while a species filter is active.
+    for (const layerId of state.mapLayerIds.bins) {
+      if (map.getLayer(layerId)) {
+        map.setLayoutProperty(layerId, "visibility", state.selectedSpecies ? "none" : occVis);
+      }
     }
     if (map.getLayer("approved-circle")) {
       map.setLayoutProperty("approved-circle", "visibility", appVis);
@@ -720,22 +796,27 @@ async function bootstrap(): Promise<void> {
   }
 
   // Load GeoJSON inspection mirrors + approved overlay for filtering, deduplication, and SVG fallback.
-  const basinsGeoUrl = resolveDataUrl(
-    state.publicDataUrl,
-    manifest.layers.basins.geojson_path || "/releases/v0.1.0-demo/basins.geojson"
-  );
-  const occGeoUrl = resolveDataUrl(
-    state.publicDataUrl,
-    manifest.layers.occurrences.geojson_path || "/releases/v0.1.0-demo/occurrences.geojson"
-  );
+  // GeoJSON mirrors are only published for small releases (SVG fallback + species filter);
+  // large real releases rely on PMTiles alone.
+  const emptyFc = { type: "FeatureCollection", features: [] as GeoJsonFeature[] };
+  const basinsGeoPath = manifest.layers.basins.geojson_path;
+  const occGeoPath = manifest.layers.occurrences.geojson_path;
+  const ownIdsPath = manifest.layers.snapshot_own_occurrence_ids;
   const approvedUrl = resolveDataUrl(
     state.publicDataUrl,
     manifest.overlays.approved_observations.path
   );
 
-  const [basinsFc, occFc, approvedFc] = await Promise.all([
-    fetchJsonWithTimeout(basinsGeoUrl, 5000),
-    fetchJsonWithTimeout(occGeoUrl, 5000),
+  const [basinsFc, occFc, ownIds, approvedFc] = await Promise.all([
+    basinsGeoPath
+      ? fetchJsonWithTimeout(resolveDataUrl(state.publicDataUrl, basinsGeoPath), 8000).catch(() => emptyFc)
+      : Promise.resolve(emptyFc),
+    occGeoPath
+      ? fetchJsonWithTimeout(resolveDataUrl(state.publicDataUrl, occGeoPath), 8000).catch(() => emptyFc)
+      : Promise.resolve(emptyFc),
+    ownIdsPath
+      ? fetchJsonWithTimeout(resolveDataUrl(state.publicDataUrl, ownIdsPath), 5000).catch(() => [])
+      : Promise.resolve([]),
     fetchJsonWithTimeout(approvedUrl, 5000).catch(() => ({
       type: "FeatureCollection",
       features: [],
@@ -750,6 +831,10 @@ async function bootstrap(): Promise<void> {
       .map((f) => (f.properties as any).occurrenceID)
       .filter((id): id is string => typeof id === "string")
   );
+  // Large releases publish only basinmap.org's own occurrenceIDs found in the GBIF snapshot.
+  for (const id of Array.isArray(ownIds) ? ownIds : []) {
+    if (typeof id === "string") snapshotIds.add(id);
+  }
   const dedup = deduplicateApprovedOverlay(approvedFc.features || [], snapshotIds);
   state.approvedOccurrences = dedup.uniqueFeatures;
   state.deduplicatedCount = dedup.duplicateCount;

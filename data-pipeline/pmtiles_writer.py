@@ -24,6 +24,13 @@ assert PMTILES_HEADER_STRUCT.size == 127
 COMPRESSION_NONE = 1
 COMPRESSION_GZIP = 2
 TILE_TYPE_MVT = 1
+TILE_TYPE_PNG = 2
+TILE_TYPE_JPEG = 3
+TILE_TYPE_WEBP = 4
+
+# PMTiles v3 spec: clients fetch the first 16 KiB, which must contain the
+# 127-byte header plus the complete (compressed) root directory.
+ROOT_DIRECTORY_BUDGET = 16384 - 127
 
 GEOM_UNKNOWN = 0
 GEOM_POINT = 1
@@ -594,10 +601,21 @@ def write_pmtiles(
     bounds: Sequence[float],
     center: Sequence[float],
     center_zoom: Optional[int] = None,
+    tile_type: int = TILE_TYPE_MVT,
+    tile_compression: Optional[int] = None,
+    tiles_precompressed: bool = False,
 ) -> Dict[str, int]:
-    """Write a PMTiles v3 file from {(z, x, y): raw_mvt_bytes} and return archive stats."""
+    """Write a PMTiles v3 file from {(z, x, y): raw_tile_bytes} and return archive stats.
+
+    Vector (MVT) tiles are gzip-compressed. Raster tiles (PNG/JPEG/WebP) are stored
+    as-is (``COMPRESSION_NONE``) because the image codec already compresses them.
+    Leaf directories are emitted automatically when the root directory would not
+    fit in the first 16 KiB of the archive.
+    """
     if not tiles_by_zxy:
         raise ValueError("Cannot write PMTiles archive with zero tiles")
+    if tile_compression is None:
+        tile_compression = COMPRESSION_GZIP if tile_type == TILE_TYPE_MVT else COMPRESSION_NONE
 
     sorted_items = sorted(
         ((zxy_to_tile_id(z, x, y), raw_bytes) for (z, x, y), raw_bytes in tiles_by_zxy.items()),
@@ -610,7 +628,11 @@ def write_pmtiles(
     entries: List[Tuple[int, int, int, int]] = []
 
     for tile_id, raw_bytes in sorted_items:
-        compressed = gzip.compress(raw_bytes, mtime=0)
+        compressed = (
+            gzip.compress(raw_bytes, mtime=0)
+            if tile_compression == COMPRESSION_GZIP and not tiles_precompressed
+            else raw_bytes
+        )
         if compressed in payload_cache:
             offset, length = payload_cache[compressed]
         else:
@@ -627,7 +649,7 @@ def write_pmtiles(
                 continue
         entries.append((tile_id, offset, length, 1))
 
-    root_dir_bytes = gzip.compress(_serialize_directory(entries), mtime=0)
+    root_dir_bytes, leaf_dir_blob, num_leaves = build_directories(entries)
     json_meta_bytes = gzip.compress(
         json.dumps(metadata, separators=(",", ":"), sort_keys=True).encode("utf-8"),
         mtime=0,
@@ -637,8 +659,8 @@ def write_pmtiles(
     root_dir_offset = 127
     json_metadata_offset = root_dir_offset + len(root_dir_bytes)
     leaf_dirs_offset = json_metadata_offset + len(json_meta_bytes)
-    leaf_dirs_bytes = 0
-    tile_data_offset = leaf_dirs_offset
+    leaf_dirs_bytes = len(leaf_dir_blob)
+    tile_data_offset = leaf_dirs_offset + leaf_dirs_bytes
 
     min_lon, min_lat, max_lon, max_lat = bounds
     c_lon, c_lat = center
@@ -659,8 +681,8 @@ def write_pmtiles(
         len(payload_cache),      # num_tile_contents
         1,                       # clustered
         COMPRESSION_GZIP,        # internal_compression
-        COMPRESSION_GZIP,        # tile_compression
-        TILE_TYPE_MVT,           # tile_type
+        tile_compression,        # tile_compression
+        tile_type,               # tile_type
         min_zoom,
         max_zoom,
         round(min_lon * 1e7),
@@ -677,14 +699,126 @@ def write_pmtiles(
         f.write(header)
         f.write(root_dir_bytes)
         f.write(json_meta_bytes)
+        f.write(leaf_dir_blob)
         f.write(tile_data_bytes)
 
     return {
-        "total_bytes": 127 + len(root_dir_bytes) + len(json_meta_bytes) + len(tile_data_bytes),
+        "total_bytes": 127
+        + len(root_dir_bytes)
+        + len(json_meta_bytes)
+        + leaf_dirs_bytes
+        + len(tile_data_bytes),
         "num_addressed_tiles": len(sorted_items),
         "num_tile_entries": len(entries),
         "num_tile_contents": len(payload_cache),
+        "num_leaf_directories": num_leaves,
+        "root_dir_bytes": len(root_dir_bytes),
     }
+
+
+def build_directories(
+    entries: Sequence[Tuple[int, int, int, int]],
+) -> Tuple[bytes, bytes, int]:
+    """Return (root_dir_gz, leaf_dirs_blob, num_leaves) honoring the 16 KiB root budget."""
+    root = gzip.compress(_serialize_directory(entries), mtime=0)
+    if len(root) <= ROOT_DIRECTORY_BUDGET:
+        return root, b"", 0
+
+    leaf_size = 4096
+    while True:
+        root_entries: List[Tuple[int, int, int, int]] = []
+        leaf_chunks: List[bytes] = []
+        leaf_len = 0
+        for i in range(0, len(entries), leaf_size):
+            chunk = entries[i : i + leaf_size]
+            leaf_gz = gzip.compress(_serialize_directory(chunk), mtime=0)
+            # run_length == 0 marks an entry that points to a leaf directory.
+            root_entries.append((chunk[0][0], leaf_len, len(leaf_gz), 0))
+            leaf_chunks.append(leaf_gz)
+            leaf_len += len(leaf_gz)
+        root = gzip.compress(_serialize_directory(root_entries), mtime=0)
+        if len(root) <= ROOT_DIRECTORY_BUDGET:
+            return root, b"".join(leaf_chunks), len(leaf_chunks)
+        leaf_size *= 2
+
+
+def iter_directory_entries(
+    read_range: Any,
+    header: Dict[str, Any],
+) -> List[Tuple[int, int, int, int]]:
+    """Return all tile entries (expanding leaf directories) via read_range(offset, length)."""
+    root_raw = read_range(header["root_dir_offset"], header["root_dir_bytes"])
+    out: List[Tuple[int, int, int, int]] = []
+    for tile_id, offset, length, run_length in _deserialize_directory(gzip.decompress(root_raw)):
+        if run_length == 0:
+            leaf_raw = read_range(header["leaf_dirs_offset"] + offset, length)
+            out.extend(_deserialize_directory(gzip.decompress(leaf_raw)))
+        else:
+            out.append((tile_id, offset, length, run_length))
+    return out
+
+
+def _find_entry(
+    entries: Sequence[Tuple[int, int, int, int]], tile_id: int
+) -> Optional[Tuple[int, int, int, int]]:
+    lo, hi = 0, len(entries) - 1
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        if entries[mid][0] < tile_id:
+            lo = mid + 1
+        elif entries[mid][0] > tile_id:
+            hi = mid - 1
+        else:
+            return entries[mid]
+    if hi >= 0:
+        cand = entries[hi]
+        if cand[3] == 0 or tile_id - cand[0] < cand[3]:
+            return cand
+    return None
+
+
+class PMTilesRangeReader:
+    """Minimal PMTiles v3 client mirroring pmtiles.js request behavior.
+
+    ``fetch(offset, length) -> bytes`` performs one byte-range read. Like pmtiles.js,
+    the first read fetches 16 KiB (header + root directory); leaf directories and
+    tiles are fetched individually and leaf directories are cached.
+    """
+
+    def __init__(self, fetch: Any) -> None:
+        self._fetch = fetch
+        self._initial = b""
+        self.header: Dict[str, Any] = {}
+        self._root: List[Tuple[int, int, int, int]] = []
+        self._leaf_cache: Dict[int, List[Tuple[int, int, int, int]]] = {}
+
+    def open(self) -> Dict[str, Any]:
+        self._initial = self._fetch(0, 16384)
+        self.header = parse_pmtiles_header(self._initial[:127])
+        rd_off, rd_len = self.header["root_dir_offset"], self.header["root_dir_bytes"]
+        if rd_off + rd_len > len(self._initial):
+            raise ValueError("Root directory exceeds the first 16 KiB (spec violation)")
+        self._root = _deserialize_directory(gzip.decompress(self._initial[rd_off : rd_off + rd_len]))
+        return self.header
+
+    def get_tile(self, z: int, x: int, y: int) -> Optional[bytes]:
+        if not self.header:
+            self.open()
+        tile_id = zxy_to_tile_id(z, x, y)
+        entries = self._root
+        for _ in range(4):  # spec allows bounded directory depth
+            entry = _find_entry(entries, tile_id)
+            if entry is None:
+                return None
+            _, offset, length, run_length = entry
+            if run_length > 0:
+                return self._fetch(self.header["tile_data_offset"] + offset, length)
+            leaf_off = self.header["leaf_dirs_offset"] + offset
+            if leaf_off not in self._leaf_cache:
+                raw = self._fetch(leaf_off, length)
+                self._leaf_cache[leaf_off] = _deserialize_directory(gzip.decompress(raw))
+            entries = self._leaf_cache[leaf_off]
+        return None
 
 
 def parse_pmtiles_header(header_bytes: bytes) -> Dict[str, Any]:
@@ -726,10 +860,7 @@ def inspect_pmtiles(source: Union[Path, bytes]) -> Dict[str, Any]:
     raw = source.read_bytes() if isinstance(source, Path) else source
     header = parse_pmtiles_header(raw[:127])
 
-    rd_start = header["root_dir_offset"]
-    rd_end = rd_start + header["root_dir_bytes"]
-    dir_raw = gzip.decompress(raw[rd_start:rd_end])
-    entries = _deserialize_directory(dir_raw)
+    entries = iter_directory_entries(lambda off, ln: raw[off : off + ln], header)
 
     md_start = header["json_metadata_offset"]
     md_end = md_start + header["json_metadata_bytes"]
@@ -741,8 +872,15 @@ def inspect_pmtiles(source: Union[Path, bytes]) -> Dict[str, Any]:
         slice_bytes = raw[td_start + offset : td_start + offset + length]
         if len(slice_bytes) != length:
             raise ValueError(f"Tile slice truncated for tile_id={tile_id}")
-        mvt_raw = gzip.decompress(slice_bytes)
-        decoded = decode_mvt_tile(mvt_raw)
+        if header["tile_type"] != TILE_TYPE_MVT:
+            decoded = {"_raster": {"bytes": length, "magic": slice_bytes[:12]}}
+        else:
+            mvt_raw = (
+                gzip.decompress(slice_bytes)
+                if header["tile_compression"] == COMPRESSION_GZIP
+                else slice_bytes
+            )
+            decoded = decode_mvt_tile(mvt_raw)
         for r in range(run_length):
             zxy = tile_id_to_zxy(tile_id + r)
             tiles_by_zxy[zxy] = decoded

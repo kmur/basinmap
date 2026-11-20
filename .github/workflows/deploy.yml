@@ -90,7 +90,20 @@ jobs:
 
       - name: Publish demo spatial release and initialize approved overlay (${{ env.CF_ENV }})
         run: |
-          python3 data-pipeline/publish_release.py publish --root public-r2 --version v0.1.0-demo --mode wrangler --bucket "${PUBLIC_BUCKET}"
+          # Publishes the release checked into public-r2/ (the small demo). Real GBIF releases are
+          # built on a batch machine into build-r2/ and uploaded with `publish_release.py --mode rclone`
+          # (see data-pipeline/README.md), so this step must not overwrite a newer bucket manifest.
+          REPO_VERSION=$(python3 -c 'import json;print(json.load(open("public-r2/releases/manifest.json"))["current_version"])')
+          if npx wrangler r2 object get "${PUBLIC_BUCKET}/releases/manifest.json" --remote --file /tmp/live-manifest.json >/dev/null 2>&1; then
+            LIVE_VERSION=$(python3 -c 'import json;print(json.load(open("/tmp/live-manifest.json"))["current_version"])')
+          else
+            LIVE_VERSION=""
+          fi
+          if [ -z "${LIVE_VERSION}" ] || [ "${LIVE_VERSION}" = "${REPO_VERSION}" ]; then
+            python3 data-pipeline/publish_release.py publish --root public-r2 --version "${REPO_VERSION}" --mode wrangler --bucket "${PUBLIC_BUCKET}"
+          else
+            echo "Bucket serves ${LIVE_VERSION} (published from the batch pipeline); skipping repo release ${REPO_VERSION}"
+          fi
           if ! npx wrangler r2 object get "${PUBLIC_BUCKET}/overlays/approved.geojson" --remote --file /tmp/existing-approved.geojson >/dev/null 2>&1; then
             npx wrangler r2 object put "${PUBLIC_BUCKET}/overlays/approved.geojson" --remote --file public-r2/overlays/approved.geojson --cache-control "public, max-age=60, must-revalidate" --content-type "application/json"
           else

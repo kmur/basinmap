@@ -39,6 +39,23 @@ IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable"
 MUTABLE_CACHE_CONTROL = "public, max-age=60, must-revalidate"
 PROTECTED_TOP_PREFIXES = {"media", "exports", "overlays"}
 RANGE_HEADER_RE = re.compile(r"^bytes=(\d*)-(\d*)$")
+# Section 4.3: Cloudflare's CDN skips caching objects above 512 MB; keep a margin.
+MAX_ARCHIVE_BYTES = 500_000_000
+# `wrangler r2 object put` rejects uploads above ~315 MB; larger objects need the S3 API.
+WRANGLER_MAX_UPLOAD_BYTES = 300 * 1024 * 1024
+
+
+def iter_archive_specs(manifest: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Every PMTiles/raster archive referenced by a release manifest (partitions included)."""
+    layers = manifest.get("layers", {})
+    specs: List[Dict[str, Any]] = []
+    for name in ("basins", "occurrences"):
+        layer = layers.get(name)
+        if layer:
+            specs.extend(layer.get("partitions") or [layer])
+    for raster in layers.get("rasters", []):
+        specs.extend(raster.get("partitions") or [raster])
+    return specs
 
 
 def sha256_file(path: Path) -> str:
@@ -67,17 +84,15 @@ def build_upload_plan(root: Path, version: str) -> List[Dict[str, str]]:
             f"does not match target version {version!r}"
         )
 
-    # Verify SHA-256 of primary layers before publishing anything.
-    for layer_name in ("basins", "occurrences"):
-        layer = release_manifest["layers"][layer_name]
-        layer_rel = layer["path"].lstrip("/")
-        layer_file = root / layer_rel
+    # Verify SHA-256 and the < 500 MB CDN ceiling of every archive before publishing anything.
+    for spec in iter_archive_specs(release_manifest):
+        layer_file = root / spec["path"].lstrip("/")
         if not layer_file.exists():
             raise FileNotFoundError(f"Missing layer file: {layer_file}")
         actual_sha = sha256_file(layer_file)
-        if actual_sha != layer["sha256"]:
+        if actual_sha != spec["sha256"]:
             raise ValueError(
-                f"Checksum mismatch for {layer_file}: expected {layer['sha256']}, got {actual_sha}"
+                f"Checksum mismatch for {layer_file}: expected {spec['sha256']}, got {actual_sha}"
             )
 
     root_manifest_path = releases_dir / "manifest.json"
@@ -94,6 +109,12 @@ def build_upload_plan(root: Path, version: str) -> List[Dict[str, str]]:
     for file_path in sorted(p for p in version_dir.rglob("*") if p.is_file()):
         if file_path.name.startswith("."):
             continue
+        size = file_path.stat().st_size
+        if size >= MAX_ARCHIVE_BYTES:
+            raise ValueError(
+                f"{file_path} is {size} bytes; objects on data.basinmap.org must stay below "
+                f"{MAX_ARCHIVE_BYTES} bytes (Section 4.3). Re-run the build with partitioning."
+            )
         rel_key = file_path.relative_to(root).as_posix()
         uploads.append(
             {
@@ -135,6 +156,7 @@ def publish_release(
     bucket: str = "basinmap-public-data",
     dest: Optional[Path] = None,
     dry_run: bool = False,
+    rclone_remote: str = "r2",
 ) -> Dict[str, Any]:
     if not version:
         manifest_path = root / "releases" / "manifest.json"
@@ -161,6 +183,12 @@ def publish_release(
         return {"mode": "local", "version": version, "object_count": len(plan), "plan": plan}
 
     if mode == "wrangler":
+        too_big = [i["key"] for i in plan if Path(i["local_path"]).stat().st_size > WRANGLER_MAX_UPLOAD_BYTES]
+        if too_big:
+            raise ValueError(
+                "wrangler r2 object put cannot upload objects above 300 MiB; use --mode rclone for: "
+                + ", ".join(too_big)
+            )
         commands: List[List[str]] = []
         for item in plan:
             cmd = [
@@ -183,6 +211,29 @@ def publish_release(
                 subprocess.run(cmd, check=True)
         return {
             "mode": "wrangler",
+            "version": version,
+            "bucket": bucket,
+            "object_count": len(plan),
+            "dry_run": dry_run,
+            "commands": [" ".join(c) for c in commands],
+        }
+
+    if mode == "rclone":
+        # S3-compatible upload via an rclone remote configured for R2 (no size limit below 5 GB
+        # single-part; rclone switches to multipart automatically).
+        commands = []
+        for item in plan:
+            cmd = [
+                "rclone", "copyto", item["local_path"], f"{rclone_remote}:{bucket}/{item['key']}",
+                "--s3-no-check-bucket",
+                "--header-upload", f"Cache-Control: {item['cache_control']}",
+                "--header-upload", f"Content-Type: {item['content_type']}",
+            ]
+            commands.append(cmd)
+            if not dry_run:
+                subprocess.run(cmd, check=True)
+        return {
+            "mode": "rclone",
             "version": version,
             "bucket": bucket,
             "object_count": len(plan),
@@ -434,9 +485,14 @@ def verify_http_delivery(
         manifest = json.loads(manifest_body.decode("utf-8"))
 
         verified_layers: Dict[str, Any] = {}
-        for layer_name in ("basins", "occurrences"):
-            layer = manifest["layers"][layer_name]
-            layer_path = layer["path"]
+        archive_checks: List[Tuple[str, str]] = [
+            ("basins", manifest["layers"]["basins"]["path"]),
+            ("occurrences", manifest["layers"]["occurrences"]["path"]),
+        ]
+        for spec in iter_archive_specs(manifest):
+            if spec["path"] not in {p for _, p in archive_checks}:
+                archive_checks.append((spec["path"].rsplit("/", 1)[-1], spec["path"]))
+        for layer_name, layer_path in archive_checks:
             layer_url = f"{base}{layer_path}"
 
             head_status, head_headers, _ = do_req(layer_path, method="HEAD")
@@ -568,7 +624,8 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     p_pub = subparsers.add_parser("publish", help="Stage or upload a release to R2")
     p_pub.add_argument("--root", type=Path, default=SCRIPT_DIR.parent / "public-r2")
     p_pub.add_argument("--version", default=None, help="Release version (defaults to manifest.json current_version)")
-    p_pub.add_argument("--mode", choices=["local", "wrangler"], default="local")
+    p_pub.add_argument("--mode", choices=["local", "wrangler", "rclone"], default="local")
+    p_pub.add_argument("--rclone-remote", default="r2", help="rclone remote configured for R2 (--mode rclone)")
     p_pub.add_argument("--bucket", default="basinmap-public-data")
     p_pub.add_argument("--dest", type=Path, default=None, help="Target local directory for --mode local")
     p_pub.add_argument("--dry-run", action="store_true")
@@ -594,6 +651,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             bucket=args.bucket,
             dest=args.dest,
             dry_run=args.dry_run,
+            rclone_remote=args.rclone_remote,
         )
         print(json.dumps(result, indent=2))
         return 0

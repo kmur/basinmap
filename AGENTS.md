@@ -65,8 +65,8 @@ Always develop and test on the `staging` branch first (`https://staging.basinmap
 
 ## 4. Remaining Implementation Roadmap
 
-- **Stage 4 — Real GBIF + HydroBASINS Release & Pilot Benchmarks:**
-  Replace the synthetic `v0.1.0-demo` dataset with a real scoped GBIF Occurrence Download (real DOI) + real regional HydroBASINS polygons (and optional WebP raster `.pmtiles` / COG), enforce `< 500 MB` archive partitioning, publish `v0.2.0` to R2, and measure cold/warm HTTP `206` latency and request counts.
+- **Stage 4 — Real GBIF + HydroBASINS Release & Pilot Benchmarks (code complete, live release pending):**
+  `data-pipeline/ingest_gbif_download.py` (GBIF async download with DOI/key/query/SHA-256 provenance + HydroBASINS join), `release_tiling.py` (`< 500 MB` partitioning recorded as `layers.*.partitions`), `benchmark_range_pilot.py` (cold/warm 206, `CF-Cache-Status`, Section 7 costs). Remaining: run `count → request → fetch → build` on a machine with GBIF access, publish `v0.2.0` with `publish_release.py --mode rclone` to `basinmap-public-data-staging`, benchmark, then production. Real releases are built into git-ignored `build-r2/`, never committed. Keep new manifests backward compatible: the frontend reads `layers.<name>.partitions` when present and falls back to `layers.<name>.path`.
 - **Stage 5 — Contributor Submission & Reviewer UI + Live ORCID OAuth & Turnstile:**
   Build the frontend observation submission modal, drag-and-drop streaming media uploader, ORCID OAuth PKCE/code flow (`src/worker/index.ts`), live Cloudflare Turnstile widget, and reviewer approval queue UI wired to `/api/observations`, `/api/uploads/:id`, and `/api/review/:id/*`.
 - **Stage 6 — Automated DwC-A Publishing, GBIF Validation & Off-Provider Backups:**

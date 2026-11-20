@@ -9,3 +9,7 @@ dist/
 private-r2/
 public-r2/media/
 public-r2/exports/
+build-r2/
+data-pipeline/work/
+bench-*.json
+bench-*.md

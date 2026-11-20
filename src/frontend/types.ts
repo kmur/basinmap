@@ -1,3 +1,13 @@
+export interface ReleasePartitionSpec {
+  path: string;
+  sha256: string;
+  bytes: number;
+  min_zoom: number;
+  max_zoom: number;
+  bounds?: [number, number, number, number];
+  tiles: number;
+}
+
 export interface ReleaseLayerSpec {
   format: string;
   source_layer?: string;
@@ -9,6 +19,19 @@ export interface ReleaseLayerSpec {
   max_zoom: number;
   tiles: number;
   cache_control: string;
+  partitions?: ReleasePartitionSpec[];
+}
+
+export interface ReleaseRasterSpec {
+  id: string;
+  format: string;
+  tile_type: string;
+  tile_size: number;
+  path: string;
+  min_zoom: number;
+  max_zoom: number;
+  attribution: string;
+  partitions?: ReleasePartitionSpec[];
 }
 
 export interface BasinShardRef {
@@ -46,6 +69,12 @@ export interface ReleaseManifest {
     occurrences: ReleaseLayerSpec;
     basin_shards_template: string;
     basin_shards: BasinShardRef[];
+    basin_shards_format?: string;
+    basin_shards_index?: string;
+    basin_shards_count?: number;
+    occurrence_bins_max_zoom?: number;
+    rasters?: ReleaseRasterSpec[];
+    snapshot_own_occurrence_ids?: string;
   };
   overlays: {
     approved_observations: {
@@ -158,6 +187,31 @@ export interface ApiConfigResponse {
   approved_overlay_path: string;
   supported_licenses: string[];
   submissions_enabled: boolean;
+}
+
+/** Archives backing a layer: its CDN-size partitions, or the single archive (v0.1 manifests). */
+export function layerPartitions(spec: ReleaseLayerSpec | ReleaseRasterSpec): ReleasePartitionSpec[] {
+  if (spec.partitions && spec.partitions.length > 0) {
+    return spec.partitions;
+  }
+  return [
+    {
+      path: spec.path,
+      sha256: (spec as ReleaseLayerSpec).sha256 || "",
+      bytes: (spec as ReleaseLayerSpec).bytes || 0,
+      min_zoom: spec.min_zoom,
+      max_zoom: spec.max_zoom,
+      tiles: (spec as ReleaseLayerSpec).tiles || 0,
+    },
+  ];
+}
+
+/** Release-relative shard path for a basin (JSON shard, or a regional SQLite partition). */
+export function basinShardPath(manifest: ReleaseManifest, hybasId: string, shardPath?: string): string {
+  if (shardPath && !shardPath.startsWith("/")) {
+    return `/releases/${manifest.current_version}/${shardPath}`;
+  }
+  return manifest.layers.basin_shards_template.replace("{hybas_id}", hybasId);
 }
 
 export function resolveDataUrl(baseUrl: string, path: string): string {

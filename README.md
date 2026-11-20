@@ -36,11 +36,16 @@ Open-source Web-GIS application and community biodiversity observation publishin
 ├── migrations/
 │   └── 0001_init.sql               # D1 SQLite schema & pilot ORCID users
 ├── data-pipeline/                  # Reproducible pure-Python spatial release pipeline
-│   ├── pmtiles_writer.py           # PMTiles v3 & MVT v2.1 protobuf encoder/inspector
-│   ├── build_release.py            # Spatial join, HydroBASINS pre-aggregation & manifest builder
-│   ├── publish_release.py          # R2 publisher, HTTP 206 verifier & manifest-aware cleanup
+│   ├── pmtiles_writer.py           # PMTiles v3 (leaf dirs, MVT + WebP raster) writer/inspector/range reader
+│   ├── build_release.py            # Demo release builder (synthetic v0.1.0-demo)
+│   ├── ingest_gbif_download.py     # Real GBIF async download + HydroBASINS join -> v0.2.0 release
+│   ├── hydrobasins.py              # Stdlib HydroSHEDS shapefile reader, filter, simplifier, basin index
+│   ├── release_tiling.py           # Scalar basin tiles, binned/record occurrence tiles, < 500 MB partitioning
+│   ├── benchmark_range_pilot.py    # Cold/warm HTTP 206 + CF-Cache-Status benchmark & R2 cost projection
+│   ├── publish_release.py          # R2 publisher (wrangler/rclone), HTTP 206 verifier & manifest-aware cleanup
+│   ├── queries/pilot_willamette.json  # Scoped GBIF download predicate for the Stage 4 pilot
 │   ├── sample_data/                # Deterministic Willamette Basin demo GBIF + HydroBASINS sources
-│   └── tests/test_pipeline.py
+│   └── tests/                      # test_pipeline.py, test_ingest_and_benchmark.py
 ├── public-r2/                      # Sample v0.1.0-demo R2 release & overlays/approved.geojson
 ├── scripts/
 │   ├── build_dist.py               # Compiles src/frontend/*.ts to ES2022 JS in ./dist
@@ -111,6 +116,6 @@ GitHub Actions ([.github/workflows/deploy.yml](.github/workflows/deploy.yml)) au
 | **Stage 1** | Complete & Live | Reproducible spatial pipeline, `v0.1.0-demo` PMTiles & HydroBASINS shards, HTTP `206` check, manifest cleanup |
 | **Stage 2** | Complete & Live | Cloudflare Workers Static Assets scaffold, MapLibre GL JS + PMTiles SPA, basin shard inspector, outage resilience |
 | **Stage 3** | Complete & Live | D1 observation/revision/media schema, streaming uploads, EXIF stripping, review workflow, DwC-A `.zip` exporter |
-| **Stage 4** | Planned | Real scoped GBIF download + HydroBASINS dataset (+ optional raster `.pmtiles`), `< 500 MB` partitioning & cold/warm pilot benchmarks |
+| **Stage 4** | Code complete; live `v0.2.0` pending | `ingest_gbif_download.py` (real GBIF DOI download + HydroBASINS), `< 500 MB` partitioning, WebP raster PMTiles, `benchmark_range_pilot.py`; operator steps in [data-pipeline/README.md](data-pipeline/README.md#stage-4-real-gbif--hydrobasins-pilot-release-v020) |
 | **Stage 5** | Planned | Contributor submission & photo upload UI, reviewer queue UI, live ORCID OAuth & Cloudflare Turnstile integration |
 | **Stage 6** | Planned | In-Worker / scheduled DwC-A `.zip` generation, live GBIF Data Validator + `gbif-uat.org` registration, quiet-hours D1 backups |
