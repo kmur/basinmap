@@ -26,7 +26,10 @@
           <span id="badge-range" class="pill">Range 206: checking...</span>
           <span id="badge-api" class="pill">API: checking...</span>
         </div>
+        <div id="auth-area" class="auth-area" aria-live="polite"></div>
       </header>
+
+      <div id="auth-banner" class="banner hidden" role="alert"></div>
 
       <div id="api-offline-banner" class="banner hidden" role="status">
         <span>
@@ -125,6 +128,20 @@
           </section>
         </aside>
       </div>
+
+      <aside id="contrib-drawer" class="drawer hidden" aria-label="Contribute and review observations">
+        <div class="drawer-head">
+          <div class="tabs" role="tablist">
+            <button id="tab-submit" class="tab" role="tab" type="button" aria-selected="true" aria-controls="panel-submit">Submit</button>
+            <button id="tab-mine" class="tab" role="tab" type="button" aria-selected="false" aria-controls="panel-mine">My submissions</button>
+            <button id="tab-review" class="tab hidden" role="tab" type="button" aria-selected="false" aria-controls="panel-review">Reviewer queue</button>
+          </div>
+          <button id="drawer-close" class="btn btn-ghost" type="button" aria-label="Close panel">&times;</button>
+        </div>
+        <section id="panel-submit" class="drawer-panel" role="tabpanel" aria-labelledby="tab-submit"></section>
+        <section id="panel-mine" class="drawer-panel hidden" role="tabpanel" aria-labelledby="tab-mine"></section>
+        <section id="panel-review" class="drawer-panel hidden" role="tabpanel" aria-labelledby="tab-review"></section>
+      </aside>
     </div>
 
     <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js" crossorigin="anonymous"></script>

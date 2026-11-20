@@ -477,12 +477,23 @@ def build_dist() -> Dict[str, Path]:
     types_out = assets_dir / "types.js"
     types_out.write_text(types_js, encoding="utf-8")
 
+    # Feature modules (e.g. contrib.ts) compile before app.ts so their interfaces are known.
+    extra_outputs: Dict[str, Path] = {}
+    for module_ts in sorted(FRONTEND_DIR.glob("*.ts")):
+        if module_ts.name in ("types.ts", "app.ts"):
+            continue
+        module_out = assets_dir / f"{module_ts.stem}.js"
+        module_out.write_text(compile_ts_module(module_ts.read_text(encoding="utf-8"), known_types), encoding="utf-8")
+        extra_outputs[f"{module_ts.stem}_js"] = module_out
+
     app_ts = (FRONTEND_DIR / "app.ts").read_text(encoding="utf-8")
     app_js = compile_ts_module(app_ts, known_types)
     app_out = assets_dir / "app.js"
     app_out.write_text(app_js, encoding="utf-8")
 
     verify_js_module(types_out)
+    for module_out in extra_outputs.values():
+        verify_js_module(module_out)
     verify_js_module(app_out)
 
     index_out = DIST_DIR / "index.html"
@@ -500,6 +511,7 @@ def build_dist() -> Dict[str, Path]:
         "index": index_out,
         "styles": styles_out,
         "types_js": types_out,
+        **extra_outputs,
         "app_js": app_out,
     }
 

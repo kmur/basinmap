@@ -228,6 +228,7 @@ class TestPrompt3BackendAndDwCA(unittest.TestCase):
                 "hybas_id": "7060041250",
                 "locality": "Upper McKenzie tributary",
                 "license": "CC-BY 4.0",
+                "licenseAccepted": True,
             }
         ).encode("utf-8")
 
@@ -288,6 +289,7 @@ class TestPrompt3BackendAndDwCA(unittest.TestCase):
                 "decimalLongitude": -123.251,
                 "hybas_id": "7060041240",
                 "license": "CC-BY 4.0",
+                "licenseAccepted": True,
             }
         ).encode("utf-8")
         _, _, obs_body = http_call(
@@ -399,6 +401,7 @@ class TestPrompt3BackendAndDwCA(unittest.TestCase):
                     "decimalLongitude": -123.1234,
                     "hybas_id": "7060041240",
                     "license": "CC-BY 4.0",
+                    "licenseAccepted": True,
                 }
             ).encode("utf-8")
             _, _, b = http_call(
@@ -488,6 +491,7 @@ class TestPrompt3BackendAndDwCA(unittest.TestCase):
                 "decimalLongitude": -122.4488,
                 "locality": "McKenzie headwaters",
                 "license": "CC-BY 4.0",
+                "licenseAccepted": True,
             }
         ).encode("utf-8")
         _, _, b = http_call(

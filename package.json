@@ -10,7 +10,8 @@
     "dev": "python3 scripts/build_dist.py && wrangler dev --env development",
     "dev:local": "python3 scripts/build_dist.py && python3 scripts/dev_server.py",
     "deploy": "python3 scripts/build_dist.py && wrangler deploy",
-    "test": "python3 -m unittest discover -s data-pipeline/tests -v && python3 -m unittest discover -s tests -v"
+    "test": "python3 -m unittest discover -s data-pipeline/tests -v && python3 -m unittest discover -s tests -v",
+    "test:worker": "node --test --disable-warning=ExperimentalWarning tests/worker_harness.test.mts"
   },
   "dependencies": {
     "maplibre-gl": "^4.7.1",

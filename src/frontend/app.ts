@@ -13,6 +13,7 @@ import {
   parsePmtilesHeaderBytes,
   resolveDataUrl,
 } from "./types.js";
+import { handleMapClickForContrib, initContributions } from "./contrib.js";
 
 interface AppState {
   publicDataUrl: string;
@@ -568,8 +569,15 @@ function initMapLibreIfAvailable(): boolean {
       },
     });
 
+    // Registered first so a coordinate-picking click is consumed before layer handlers run.
+    map.on("click", (e: any) => {
+      if (handleMapClickForContrib(e) && e.originalEvent) e.originalEvent.bmConsumed = true;
+    });
+    const consumed = (e: any) => Boolean(e.originalEvent && e.originalEvent.bmConsumed);
+
     ids.basinsFill.forEach((layerId) => {
       map.on("click", layerId, (e: any) => {
+        if (consumed(e)) return;
         const feature = e.features && e.features[0];
         if (feature && feature.properties) {
           loadAndRenderBasinShard(feature.properties as BasinScalarProperties);
@@ -579,6 +587,7 @@ function initMapLibreIfAvailable(): boolean {
 
     ids.occurrences.forEach((layerId) => {
       map.on("click", layerId, (e: any) => {
+        if (consumed(e)) return;
         const feature = e.features && e.features[0];
         if (feature && feature.properties) {
           renderOccurrenceDetails(feature.properties as OccurrenceProperties, false);
@@ -588,11 +597,13 @@ function initMapLibreIfAvailable(): boolean {
 
     ids.bins.forEach((layerId) => {
       map.on("click", layerId, (e: any) => {
+        if (consumed(e)) return;
         map.easeTo({ center: e.lngLat, zoom: Math.min(map.getZoom() + 2, (manifest.layers.occurrence_bins_max_zoom ?? 8) + 1) });
       });
     });
 
     map.on("click", "approved-circle", (e: any) => {
+      if (consumed(e)) return;
       const feature = e.features && e.features[0];
       if (feature && feature.properties) {
         renderOccurrenceDetails(feature.properties as OccurrenceProperties, true);
@@ -746,10 +757,36 @@ function populateSpeciesFilter(): void {
     });
 }
 
+/** Refresh the provisional overlay after a review decision (bypasses the 60 s edge cache once). */
+async function reloadApprovedOverlay(): Promise<void> {
+  if (!state.manifest) return;
+  const url = resolveDataUrl(state.publicDataUrl, state.manifest.overlays.approved_observations.path);
+  try {
+    const fc = await fetchJsonWithTimeout(`${url}?t=${Date.now()}`, 5000);
+    const dedup = deduplicateApprovedOverlay(fc.features || [], state.snapshotOwnIds);
+    state.approvedOccurrences = dedup.uniqueFeatures;
+    state.deduplicatedCount = dedup.duplicateCount;
+    const map = state.mapInstance;
+    if (state.usingMapLibre && map && map.getSource("approved")) {
+      map.getSource("approved").setData({ type: "FeatureCollection", features: state.approvedOccurrences });
+    } else {
+      renderSvgMapFallback();
+    }
+  } catch (_err) {
+    // The overlay refreshes on the next page load; the review itself is already saved.
+  }
+}
+
 async function bootstrap(): Promise<void> {
   bindControls();
   const apiStatus = await probeApiStatus();
   state.publicDataUrl = apiStatus.publicDataUrl;
+
+  // Contributor/reviewer UI; independent of map data so it works even if the release fails to load.
+  initContributions(
+    { getMap: () => (state.usingMapLibre ? state.mapInstance : null), onReviewDecision: reloadApprovedOverlay },
+    apiStatus.online
+  ).catch(() => undefined);
 
   const manifestUrl = resolveDataUrl(state.publicDataUrl, "/releases/manifest.json");
   const manifest: ReleaseManifest = await fetchJsonWithTimeout(manifestUrl, 5000);
@@ -835,6 +872,7 @@ async function bootstrap(): Promise<void> {
   for (const id of Array.isArray(ownIds) ? ownIds : []) {
     if (typeof id === "string") snapshotIds.add(id);
   }
+  state.snapshotOwnIds = snapshotIds;
   const dedup = deduplicateApprovedOverlay(approvedFc.features || [], snapshotIds);
   state.approvedOccurrences = dedup.uniqueFeatures;
   state.deduplicatedCount = dedup.duplicateCount;

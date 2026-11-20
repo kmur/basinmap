@@ -15,7 +15,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
-from urllib.parse import unquote
+from urllib.parse import parse_qs, unquote, urlsplit
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 DIST_DIR = ROOT_DIR / "dist"
@@ -25,7 +25,7 @@ LOCAL_DATA_DIR = ROOT_DIR / ".local-data"
 if str(Path(__file__).resolve().parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from backend_engine import BasinmapBackend, HttpError, MAX_UPLOAD_BYTES  # noqa: E402
+from backend_engine import BasinmapBackend, HttpError, MAX_MEDIA_PER_OBSERVATION, MAX_UPLOAD_BYTES  # noqa: E402
 from export_dwca import export_dwca  # noqa: E402
 
 RANGE_RE = re.compile(r"^bytes=(\d*)-(\d*)$")
@@ -129,6 +129,15 @@ class LocalBasinmapHandler(http.server.BaseHTTPRequestHandler):
                     "approved_overlay_path": "/overlays/approved.geojson",
                     "supported_licenses": ["CC-BY 4.0", "CC0 1.0"],
                     "submissions_enabled": True,
+                    "environment": "development",
+                    "max_upload_bytes": MAX_UPLOAD_BYTES,
+                    "max_media_per_observation": MAX_MEDIA_PER_OBSERVATION,
+                    "turnstile_site_key": "",
+                    "auth": {
+                        "orcid_login_enabled": False,
+                        "orcid_base_url": "https://sandbox.orcid.org",
+                        "dev_tokens_enabled": True,
+                    },
                 },
                 "public, max-age=60, must-revalidate",
             )
@@ -147,10 +156,60 @@ class LocalBasinmapHandler(http.server.BaseHTTPRequestHandler):
             return
 
         headers = self._headers_dict()
+        query = {k: v[0] for k, v in parse_qs(urlsplit(self.path).query).items()}
         try:
+            # Local development has no ORCID client: mirror the Worker's ENVIRONMENT=development
+            # behaviour (dev bearer tokens accepted, ORCID login reports it is not configured).
+            if path == "/api/auth/login" and self.command == "GET":
+                self._send_json(
+                    503,
+                    {
+                        "error": "ORCID sign-in is not configured for this environment",
+                        "code": "orcid_not_configured",
+                        "dev_tokens_enabled": True,
+                    },
+                    "private, no-store",
+                )
+                return
+            if path == "/api/auth/callback" and self.command == "GET":
+                self._send_json(503, {"error": "ORCID sign-in is not configured", "code": "orcid_not_configured"}, "private, no-store")
+                return
+            if path == "/api/auth/logout" and self.command == "POST":
+                self._send_json(200, {"signed_out": True}, "private, no-store")
+                return
+
             if path == "/api/auth/me" and self.command == "GET":
                 user = self.backend.require_auth(headers.get("Authorization"))
-                self._send_json(200, {"user": dict(user)}, "private, no-store")
+                self._send_json(
+                    200,
+                    {
+                        "user": {k: user[k] for k in ("id", "orcid_id", "display_name", "role")},
+                        "auth_method": "dev-bearer",
+                    },
+                    "private, no-store",
+                )
+                return
+
+            if path == "/api/observations/mine" and self.command == "GET":
+                status, payload = self.backend.list_my_observations(headers)
+                self._send_json(status, payload, "private, no-store")
+                return
+
+            if path == "/api/review/pending" and self.command == "GET":
+                status, payload = self.backend.list_review_queue(headers, query)
+                self._send_json(status, payload, "private, no-store")
+                return
+
+            media_match = re.match(r"^/api/media/([0-9a-fA-F-]{36})$", path)
+            if media_match and self.command == "GET":
+                data, mime = self.backend.get_private_media(media_match.group(1), headers)
+                self.send_response(200)
+                self.send_header("Content-Type", mime)
+                self.send_header("Content-Length", str(len(data)))
+                self.send_header("Cache-Control", "private, no-store")
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.end_headers()
+                self.wfile.write(data)
                 return
 
             if path == "/api/observations" and self.command == "POST":

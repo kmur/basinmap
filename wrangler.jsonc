@@ -37,13 +37,17 @@
   ],
   "vars": {
     "PUBLIC_DATA_URL": "https://data.basinmap.org",
-    "ENVIRONMENT": "production"
+    "ENVIRONMENT": "production",
+    "ORCID_BASE_URL": "https://orcid.org",
+    "TURNSTILE_SITE_KEY": ""
   },
   "env": {
     "development": {
       "vars": {
         "PUBLIC_DATA_URL": "",
-        "ENVIRONMENT": "development"
+        "ENVIRONMENT": "development",
+        "ORCID_BASE_URL": "https://sandbox.orcid.org",
+        "TURNSTILE_SITE_KEY": ""
       }
     },
     "staging": {
@@ -76,7 +80,9 @@
       ],
       "vars": {
         "PUBLIC_DATA_URL": "/api/r2",
-        "ENVIRONMENT": "staging"
+        "ENVIRONMENT": "staging",
+        "ORCID_BASE_URL": "https://sandbox.orcid.org",
+        "TURNSTILE_SITE_KEY": "1x00000000000000000000AA"
       }
     }
   }
