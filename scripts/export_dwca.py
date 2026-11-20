@@ -128,6 +128,14 @@ def _build_eml_xml(
 ) -> str:
     license_uri = LICENSE_URI_MAP[dataset_license]
     west, south, east, north = bbox
+    # Named EML contact (GBIF warns RESOURCE_CONTACTS_MISSING_OR_INCOMPLETE without a person).
+    given = os.environ.get("DATASET_CONTACT_GIVEN_NAME", "")
+    surname = os.environ.get("DATASET_CONTACT_SURNAME", "")
+    contact_email = os.environ.get("DATASET_CONTACT_EMAIL") or "stewardship@basinmap.org"
+    person = (
+        f"      <individualName><givenName>{escape(given)}</givenName><surName>{escape(surname)}</surName></individualName>\n"
+        if given or surname else ""
+    )
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <eml:eml xmlns:eml="eml://ecoinformatics.org/eml-2.1.1"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -140,17 +148,15 @@ def _build_eml_xml(
     <alternateIdentifier>{escape(export_id)}</alternateIdentifier>
     <title xml:lang="eng">basinmap.org Community Hydrological Basin Biodiversity Observations</title>
     <creator>
-      <individualName><givenName>Ken</givenName><surName>Murch</surName></individualName>
-      <organizationName>basinmap.org Open Web-GIS Project</organizationName>
+{person}      <organizationName>basinmap.org Open Web-GIS Project</organizationName>
       <positionName>Data Steward</positionName>
-      <electronicMailAddress>kenmurch@gmail.com</electronicMailAddress>
+      <electronicMailAddress>{escape(contact_email)}</electronicMailAddress>
       <onlineUrl>https://basinmap.org</onlineUrl>
     </creator>
     <metadataProvider>
-      <individualName><givenName>Ken</givenName><surName>Murch</surName></individualName>
-      <organizationName>basinmap.org Open Web-GIS Project</organizationName>
+{person}      <organizationName>basinmap.org Open Web-GIS Project</organizationName>
       <positionName>Data Steward</positionName>
-      <electronicMailAddress>kenmurch@gmail.com</electronicMailAddress>
+      <electronicMailAddress>{escape(contact_email)}</electronicMailAddress>
       <onlineUrl>https://basinmap.org</onlineUrl>
     </metadataProvider>
     <pubDate>{escape(pub_date)}</pubDate>
@@ -179,10 +185,9 @@ def _build_eml_xml(
       </temporalCoverage>
     </coverage>
     <contact>
-      <individualName><givenName>Ken</givenName><surName>Murch</surName></individualName>
-      <organizationName>basinmap.org Data Stewardship</organizationName>
+{person}      <organizationName>basinmap.org Data Stewardship</organizationName>
       <positionName>Data Steward</positionName>
-      <electronicMailAddress>kenmurch@gmail.com</electronicMailAddress>
+      <electronicMailAddress>{escape(contact_email)}</electronicMailAddress>
       <onlineUrl>https://basinmap.org</onlineUrl>
     </contact>
   </dataset>
@@ -625,7 +630,8 @@ def write_status(conn: sqlite3.Connection, public_r2_dir: Path, public_base_url:
     indexeable = None
     if latest is not None and latest["validator_summary"]:
         try:
-            indexeable = json.loads(latest["validator_summary"]).get("indexeable")
+            v = json.loads(latest["validator_summary"])
+            indexeable = (v.get("metrics") or {}).get("indexeable", v.get("indexeable"))  # GBIF: metrics.indexeable
         except ValueError:
             indexeable = None
     status = {

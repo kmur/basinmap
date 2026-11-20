@@ -54,7 +54,7 @@ class FakeGbifApi:
         if url == export_dwca.VALIDATOR_URL and req.get_method() == "POST":
             return FakeResp(json.dumps({"key": "val-1", "status": "SUBMITTED"}).encode())
         if url.startswith(export_dwca.VALIDATOR_URL + "/"):
-            return FakeResp(json.dumps({"key": "val-1", "status": "FINISHED", "indexeable": True}).encode())
+            return FakeResp(json.dumps({"key": "val-1", "status": "FINISHED", "metrics": {"indexeable": True}}).encode())
         if url.endswith(f"/dataset/{DATASET_KEY}/crawl"):
             return FakeResp(b"")
         if "/occurrence/search?" in url:
@@ -183,6 +183,14 @@ class TestPythonPublicationPipeline(unittest.TestCase):
         with self.assertRaises(RuntimeError), mock.patch.dict(os.environ, {"GBIF_USER": ""}):
             export_dwca.submit_to_gbif_validator(self.r2 / "exports" / "dwca-latest.zip")
 
+    def test_named_contact_from_environment(self) -> None:
+        with mock.patch.dict(os.environ, {"DATASET_CONTACT_GIVEN_NAME": "Ada", "DATASET_CONTACT_SURNAME": "Lovelace",
+                                          "DATASET_CONTACT_EMAIL": "steward@example.org"}):
+            export_dwca.run_publication(self.backend.conn, self.r2, "test", urlopen=self.api)
+        eml = (self.r2 / "exports" / "eml.xml").read_text()
+        self.assertEqual(eml.count("<surName>Lovelace</surName>"), 3)
+        self.assertEqual(eml.count("steward@example.org"), 3)
+
     def test_empty_archive_is_not_sent_to_gbif(self) -> None:
         res = self.run_pipeline()
         self.assertTrue(res["export"]["changed"])
@@ -191,7 +199,6 @@ class TestPythonPublicationPipeline(unittest.TestCase):
         self.assertEqual([c for c in self.api.calls if c[0] == "POST"], [], "no validator upload or crawl request")
         eml = (self.r2 / "exports" / "eml.xml").read_text()
         self.assertEqual(eml.count("<positionName>Data Steward</positionName>"), 3)
-        self.assertEqual(eml.count("<surName>Murch</surName>"), 3)
 
     def test_dev_server_admin_endpoints(self) -> None:
         self.assertEqual(self.call("POST", "/api/admin/publication/run", self.reviewer, {})[0], 403)

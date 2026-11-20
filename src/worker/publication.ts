@@ -30,6 +30,26 @@ export interface PublicationEnv {
   GBIF_USER?: string;
   GBIF_PWD?: string;
   GBIF_VALIDATE?: string;
+  DATASET_CONTACT_GIVEN_NAME?: string;
+  DATASET_CONTACT_SURNAME?: string;
+  DATASET_CONTACT_EMAIL?: string;
+}
+
+export interface DatasetContact {
+  givenName: string;
+  surName: string;
+  email: string;
+}
+
+export const DEFAULT_CONTACT: DatasetContact = { givenName: "", surName: "", email: "stewardship@basinmap.org" };
+
+/** Named EML contact from Worker vars/secrets; GBIF warns (RESOURCE_CONTACTS_MISSING_OR_INCOMPLETE) without a person. */
+export function datasetContact(env: PublicationEnv): DatasetContact {
+  return {
+    givenName: env.DATASET_CONTACT_GIVEN_NAME || "",
+    surName: env.DATASET_CONTACT_SURNAME || "",
+    email: env.DATASET_CONTACT_EMAIL || DEFAULT_CONTACT.email,
+  };
 }
 
 export const LICENSE_URI_MAP: Record<string, string> = {
@@ -226,11 +246,16 @@ export function buildEmlXml(
   bbox: number[],
   minDate: string,
   maxDate: string,
-  pubDate: string
+  pubDate: string,
+  contact: DatasetContact = DEFAULT_CONTACT
 ): string {
   const licenseUri = LICENSE_URI_MAP[datasetLicense];
   const [west, south, east, north] = bbox;
   const e = xmlEscape;
+  const person =
+    contact.givenName || contact.surName
+      ? `      <individualName><givenName>${e(contact.givenName)}</givenName><surName>${e(contact.surName)}</surName></individualName>\n`
+      : "";
   return `<?xml version="1.0" encoding="UTF-8"?>
 <eml:eml xmlns:eml="eml://ecoinformatics.org/eml-2.1.1"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -243,17 +268,15 @@ export function buildEmlXml(
     <alternateIdentifier>${e(exportId)}</alternateIdentifier>
     <title xml:lang="eng">basinmap.org Community Hydrological Basin Biodiversity Observations</title>
     <creator>
-      <individualName><givenName>Ken</givenName><surName>Murch</surName></individualName>
-      <organizationName>basinmap.org Open Web-GIS Project</organizationName>
+${person}      <organizationName>basinmap.org Open Web-GIS Project</organizationName>
       <positionName>Data Steward</positionName>
-      <electronicMailAddress>kenmurch@gmail.com</electronicMailAddress>
+      <electronicMailAddress>${e(contact.email)}</electronicMailAddress>
       <onlineUrl>https://basinmap.org</onlineUrl>
     </creator>
     <metadataProvider>
-      <individualName><givenName>Ken</givenName><surName>Murch</surName></individualName>
-      <organizationName>basinmap.org Open Web-GIS Project</organizationName>
+${person}      <organizationName>basinmap.org Open Web-GIS Project</organizationName>
       <positionName>Data Steward</positionName>
-      <electronicMailAddress>kenmurch@gmail.com</electronicMailAddress>
+      <electronicMailAddress>${e(contact.email)}</electronicMailAddress>
       <onlineUrl>https://basinmap.org</onlineUrl>
     </metadataProvider>
     <pubDate>${e(pubDate)}</pubDate>
@@ -282,10 +305,9 @@ export function buildEmlXml(
       </temporalCoverage>
     </coverage>
     <contact>
-      <individualName><givenName>Ken</givenName><surName>Murch</surName></individualName>
-      <organizationName>basinmap.org Data Stewardship</organizationName>
+${person}      <organizationName>basinmap.org Data Stewardship</organizationName>
       <positionName>Data Steward</positionName>
-      <electronicMailAddress>kenmurch@gmail.com</electronicMailAddress>
+      <electronicMailAddress>${e(contact.email)}</electronicMailAddress>
       <onlineUrl>https://basinmap.org</onlineUrl>
     </contact>
   </dataset>
@@ -439,7 +461,7 @@ export async function exportDwca(env: PublicationEnv, force = false): Promise<Ex
     ? [Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats)]
     : [-123.8, 43.5, -121.5, 46.2];
   const sorted = [...dates].sort();
-  const eml = buildEmlXml(exportId, datasetLicense, bbox, sorted[0] || today, sorted[sorted.length - 1] || today, today);
+  const eml = buildEmlXml(exportId, datasetLicense, bbox, sorted[0] || today, sorted[sorted.length - 1] || today, today, datasetContact(env));
   const enc = new TextEncoder();
   const zip = await buildZip(
     [
@@ -670,7 +692,9 @@ export async function writeStatus(env: PublicationEnv): Promise<Record<string, u
   let indexeable: unknown = null;
   if (latest?.validator_summary) {
     try {
-      indexeable = (JSON.parse(String(latest.validator_summary)) as Record<string, unknown>).indexeable ?? null;
+      const v = JSON.parse(String(latest.validator_summary)) as Record<string, any>;
+      // GBIF reports the verdict as metrics.indexeable; accept a top-level value too.
+      indexeable = v?.metrics?.indexeable ?? v?.indexeable ?? null;
     } catch (_err) {
       indexeable = null;
     }

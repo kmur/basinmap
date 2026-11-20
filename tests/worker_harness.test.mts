@@ -117,7 +117,7 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   }
   if (url.startsWith("https://api.gbif.org/v1/validation/")) {
     gbifCalls.push({ kind: "poll" });
-    return Response.json({ key: url.split("/").pop(), status: "FINISHED", indexeable: true });
+    return Response.json({ key: url.split("/").pop(), status: "FINISHED", metrics: { indexeable: true } });
   }
   if (url.startsWith("https://api.gbif-uat.org/v1/dataset/") && url.endsWith("/crawl")) {
     gbifCalls.push({ kind: "crawl", auth: String((init?.headers as any)?.authorization || "") });
