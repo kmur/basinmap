@@ -44,14 +44,14 @@ class TestWorkerHarness(unittest.TestCase):
     @unittest.skipUnless(_node_supports_type_stripping(), "Node >= 22.18 required to execute the Worker TypeScript")
     def test_worker_executes_auth_submission_and_review_flows(self) -> None:
         proc = subprocess.run(
-            [shutil.which("node") or "node", "--test", "--disable-warning=ExperimentalWarning", "tests/worker_harness.test.mts"],
+            [shutil.which("node") or "node", "--test", "--test-reporter=tap", "--disable-warning=ExperimentalWarning", "tests/worker_harness.test.mts"],
             cwd=ROOT_DIR,
             capture_output=True,
             text=True,
             timeout=300,
         )
         self.assertEqual(proc.returncode, 0, msg=proc.stdout[-6000:] + proc.stderr[-3000:])
-        self.assertRegex(proc.stdout, r"# fail 0")
+        self.assertRegex(proc.stdout, r"(#|ℹ) fail 0")
 
 
 class TestLocalBackendStage5(unittest.TestCase):
