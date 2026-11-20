@@ -39,7 +39,7 @@
     "PUBLIC_DATA_URL": "https://data.basinmap.org",
     "ENVIRONMENT": "production",
     "ORCID_BASE_URL": "https://orcid.org",
-    "TURNSTILE_SITE_KEY": "",
+    "TURNSTILE_SITE_KEY": "0x4AAAAAAGK9Jrv9xidhIizU",
     "DATASET_LICENSE": "CC-BY 4.0",
     "PUBLICATION_BASE_URL": "https://data.basinmap.org",
     "GBIF_API_BASE": "https://api.gbif.org/v1",
