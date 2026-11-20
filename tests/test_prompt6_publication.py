@@ -183,6 +183,15 @@ class TestPythonPublicationPipeline(unittest.TestCase):
         with self.assertRaises(RuntimeError), mock.patch.dict(os.environ, {"GBIF_USER": ""}):
             export_dwca.submit_to_gbif_validator(self.r2 / "exports" / "dwca-latest.zip")
 
+    def test_empty_archive_is_not_sent_to_gbif(self) -> None:
+        res = self.run_pipeline()
+        self.assertTrue(res["export"]["changed"])
+        self.assertEqual(res["export"]["record_count"], 0)
+        self.assertEqual((res["validator"], res["crawl"]), ("skipped_empty", "skipped_empty"))
+        self.assertEqual([c for c in self.api.calls if c[0] == "POST"], [], "no validator upload or crawl request")
+        eml = (self.r2 / "exports" / "eml.xml").read_text()
+        self.assertEqual(eml.count("<positionName>Data Steward</positionName>"), 3)
+
     def test_dev_server_admin_endpoints(self) -> None:
         self.assertEqual(self.call("POST", "/api/admin/publication/run", self.reviewer, {})[0], 403)
         self.backend.conn.execute("UPDATE users SET role = 'admin' WHERE id = 'usr-review-1'")

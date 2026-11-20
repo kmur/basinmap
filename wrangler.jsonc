@@ -100,7 +100,7 @@
         "GBIF_DATASET_KEY": ""
       },
       "triggers": {
-        "crons": ["17 10 * * *", "*/10 * * * *"]
+        "crons": ["17 10 * * *"]
       }
     }
   }

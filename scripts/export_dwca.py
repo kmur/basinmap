@@ -141,10 +141,14 @@ def _build_eml_xml(
     <title xml:lang="eng">basinmap.org Community Hydrological Basin Biodiversity Observations</title>
     <creator>
       <organizationName>basinmap.org Open Web-GIS Project</organizationName>
+      <positionName>Data Steward</positionName>
+      <electronicMailAddress>stewardship@basinmap.org</electronicMailAddress>
       <onlineUrl>https://basinmap.org</onlineUrl>
     </creator>
     <metadataProvider>
       <organizationName>basinmap.org Open Web-GIS Project</organizationName>
+      <positionName>Data Steward</positionName>
+      <electronicMailAddress>stewardship@basinmap.org</electronicMailAddress>
       <onlineUrl>https://basinmap.org</onlineUrl>
     </metadataProvider>
     <pubDate>{escape(pub_date)}</pubDate>
@@ -174,6 +178,7 @@ def _build_eml_xml(
     </coverage>
     <contact>
       <organizationName>basinmap.org Data Stewardship</organizationName>
+      <positionName>Data Steward</positionName>
       <electronicMailAddress>stewardship@basinmap.org</electronicMailAddress>
       <onlineUrl>https://basinmap.org</onlineUrl>
     </contact>
@@ -672,7 +677,10 @@ def run_publication(
             summary["overlay_records"] = len(rebuild_overlay()["features"])
         exp = export_dwca(conn, public_r2_dir, public_base_url, dataset_license, force=force)
         summary["export"] = exp
-        if exp["changed"]:
+        if exp["changed"] and not exp.get("record_count"):
+            # GBIF rejects an empty occurrence core (OCCURRENCE_CORE_EMPTY); wait for records.
+            summary["validator"] = summary["crawl"] = "skipped_empty"
+        elif exp["changed"]:
             zip_path = Path(exp["zip_path"])
             summary["validator"] = (
                 submit_to_gbif_validator(zip_path, urlopen=urlopen, conn=conn, export_id=exp["export_id"])["status"]

@@ -244,10 +244,14 @@ export function buildEmlXml(
     <title xml:lang="eng">basinmap.org Community Hydrological Basin Biodiversity Observations</title>
     <creator>
       <organizationName>basinmap.org Open Web-GIS Project</organizationName>
+      <positionName>Data Steward</positionName>
+      <electronicMailAddress>stewardship@basinmap.org</electronicMailAddress>
       <onlineUrl>https://basinmap.org</onlineUrl>
     </creator>
     <metadataProvider>
       <organizationName>basinmap.org Open Web-GIS Project</organizationName>
+      <positionName>Data Steward</positionName>
+      <electronicMailAddress>stewardship@basinmap.org</electronicMailAddress>
       <onlineUrl>https://basinmap.org</onlineUrl>
     </metadataProvider>
     <pubDate>${e(pubDate)}</pubDate>
@@ -277,6 +281,7 @@ export function buildEmlXml(
     </coverage>
     <contact>
       <organizationName>basinmap.org Data Stewardship</organizationName>
+      <positionName>Data Steward</positionName>
       <electronicMailAddress>stewardship@basinmap.org</electronicMailAddress>
       <onlineUrl>https://basinmap.org</onlineUrl>
     </contact>
@@ -709,8 +714,15 @@ export async function runPublication(env: PublicationEnv, trigger: string, force
     const exp = await exportDwca(env, force);
     summary.export = { ...exp, zip: undefined };
     if (exp.changed && exp.export_id && exp.zip) {
-      summary.validator = await submitValidation(env, exp.export_id, exp.zip);
-      summary.crawl = await requestCrawl(env, exp.export_id);
+      // GBIF rejects an archive with an empty occurrence core (OCCURRENCE_CORE_EMPTY), so only
+      // validate and crawl once there is at least one record.
+      if (Number(exp.record_count || 0) > 0) {
+        summary.validator = await submitValidation(env, exp.export_id, exp.zip);
+        summary.crawl = await requestCrawl(env, exp.export_id);
+      } else {
+        summary.validator = "skipped_empty";
+        summary.crawl = "skipped_empty";
+      }
     }
     summary.status = await writeStatus(env);
     await db
