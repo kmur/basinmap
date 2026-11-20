@@ -66,6 +66,7 @@ OCCURRENCE_POINT_FIELDS = {
     "hybas_id": "String",
     "license": "String",
     "institutionCode": "String",
+    "count": "Number",
 }
 
 
@@ -160,9 +161,10 @@ def build_occurrence_tiles(
     """Aggregated ``occurrence_bins`` below ``point_min_zoom``; record-level ``occurrences`` above.
 
     Overview zooms carry one point per 1/(2**bin_shift) tile cell with a ``count``
-    property, so dense regions never ship every record at low zoom. Detail zooms
-    below ``max_zoom`` are thinned deterministically (by hashed gbifID) to
-    ``max_points_per_tile``; ``max_zoom`` keeps every record.
+    property, so dense regions never ship every record at low zoom. Detail zooms emit
+    one feature per occupied tile pixel (``count`` = records at that pixel); below
+    ``max_zoom`` locations are thinned deterministically (by hashed gbifID) to
+    ``max_points_per_tile``; ``max_zoom`` keeps every distinct location.
     """
     tiles: Dict[Tuple[int, int, int], bytes] = {}
     world = [(lon_to_tile_x(lon, 0), lat_to_tile_y(lat, 0)) for lon, lat, _ in points]
@@ -200,20 +202,31 @@ def build_occurrence_tiles(
         for i, (u, v) in enumerate(world):
             per_tile_idx[(min(int(u * scale), n - 1), min(int(v * scale), n - 1))].append(i)
         for (tx, ty), idxs in per_tile_idx.items():
-            if z < max_zoom and len(idxs) > max_points_per_tile:
-                idxs = sorted(idxs, key=lambda i: _thin_key(int(points[i][2]["gbifID"])))[:max_points_per_tile]
-            feats = []
+            # Records on the same tile pixel are drawn on top of each other: emit one feature per
+            # pixel (deterministic representative = lowest hashed gbifID) carrying `count`. This keeps
+            # stacked site-level coordinates (e.g. 28k records at one point) from bloating tiles.
+            by_pixel: Dict[Tuple[int, int], List[int]] = defaultdict(list)
             for i in idxs:
                 u, v = world[i]
                 lx = max(0, min(DEFAULT_EXTENT - 1, round((u * scale - tx) * DEFAULT_EXTENT)))
                 ly = max(0, min(DEFAULT_EXTENT - 1, round((v * scale - ty) * DEFAULT_EXTENT)))
-                props = points[i][2]
+                by_pixel[(lx, ly)].append(i)
+            reps = []
+            for (lx, ly), members in by_pixel.items():
+                rep = min(members, key=lambda i: _thin_key(int(points[i][2]["gbifID"])))
+                reps.append((rep, len(members), lx, ly))
+            if z < max_zoom and len(reps) > max_points_per_tile:
+                reps = sorted(reps, key=lambda r: _thin_key(int(points[r[0]][2]["gbifID"])))[:max_points_per_tile]
+            feats = []
+            for rep, count, lx, ly in reps:
+                props = {k: v for k, v in points[rep][2].items() if k in OCCURRENCE_POINT_FIELDS and v not in (None, "")}
+                props["count"] = count
                 feats.append(
                     {
-                        "id": int(props["gbifID"]),
+                        "id": int(points[rep][2]["gbifID"]),
                         "geom_type": GEOM_POINT,
                         "geometry": [(lx, ly)],
-                        "properties": {k: v for k, v in props.items() if k in OCCURRENCE_POINT_FIELDS and v not in (None, "")},
+                        "properties": props,
                     }
                 )
             tiles[(z, tx, ty)] = gzip.compress(encode_mvt_tile({"occurrences": feats}), mtime=0)

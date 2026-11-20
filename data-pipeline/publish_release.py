@@ -550,8 +550,10 @@ def verify_http_delivery(
         if "immutable" not in shard_headers.get("cache-control", ""):
             raise AssertionError(f"Expected immutable Cache-Control on shard {first_shard['path']}")
         shard_json = json.loads(shard_body.decode("utf-8"))
-        if not shard_json.get("species"):
-            raise AssertionError(f"Basin shard {first_shard['path']} has empty species list")
+        if "basin" not in shard_json or "species" not in shard_json:
+            raise AssertionError(f"Basin shard {first_shard['path']} is missing basin/species keys")
+        if shard_json["basin"].get("occurrence_count", 0) > 0 and not shard_json["species"]:
+            raise AssertionError(f"Basin shard {first_shard['path']} has records but an empty species list")
 
         return {
             "base_url": base,

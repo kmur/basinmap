@@ -291,7 +291,9 @@ function renderOccurrenceDetails(props: OccurrenceProperties, isProvisional: boo
     <div style="margin-bottom:0.5rem;">${badge}</div>
     <p style="margin:0.35rem 0;"><strong><em>${escapeHtml(props.scientificName)}</em></strong></p>
     <div class="muted-note">
+      ${Number((props as any).count || 1) > 1 ? `<div><strong>${escapeHtml((props as any).count)} records at this location</strong> (showing one)</div>` : ""}
       <div><strong>occurrenceID:</strong> <code>${escapeHtml(props.occurrenceID)}</code></div>
+      ${props.gbifID ? `<div><a href="https://www.gbif.org/occurrence/${escapeHtml(props.gbifID)}" target="_blank" rel="noopener noreferrer">View on GBIF</a></div>` : ""}
       <div><strong>Event Date:</strong> ${escapeHtml(props.eventDate)}</div>
       <div><strong>Basis of Record:</strong> ${escapeHtml(props.basisOfRecord)}</div>
       <div><strong>Institution:</strong> ${escapeHtml(props.institutionCode || "Community contributor")}</div>

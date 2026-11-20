@@ -40,6 +40,7 @@ import urllib.parse
 import urllib.request
 import zipfile
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence, Tuple
@@ -124,9 +125,28 @@ class GbifClient:
             req.add_header("Authorization", f"Basic {token}")
         return self._urlopen(req, timeout=self.timeout)
 
-    def get_json(self, path: str) -> Any:
-        with self._open(f"{self.api_base}{path}") as resp:
-            return json.loads(resp.read().decode("utf-8"))
+    def get_json(self, path: str, retries: int = 3) -> Any:
+        """GET JSON; empty bodies (e.g. HTTP 204 No Content) return None; transient errors are retried."""
+        for attempt in range(retries + 1):
+            try:
+                with self._open(f"{self.api_base}{path}") as resp:
+                    raw = resp.read().decode("utf-8").strip()
+                return json.loads(raw) if raw else None
+            except urllib.error.HTTPError as err:
+                if err.code not in (429, 500, 502, 503, 504) or attempt == retries:
+                    raise
+            except (urllib.error.URLError, TimeoutError, ConnectionError):
+                if attempt == retries:
+                    raise
+            time.sleep(min(30.0, 2.0 ** attempt))
+        return None
+
+    def count_predicate(self, predicate: Dict[str, Any]) -> int:
+        """Exact record count for a download predicate (POST /occurrence/search/predicate, no auth)."""
+        body = json.dumps({"limit": 0, "predicate": predicate}).encode("utf-8")
+        with self._open(f"{self.api_base}/occurrence/search/predicate", "POST", body,
+                        content_type="application/json") as resp:
+            return int(json.loads(resp.read().decode("utf-8"))["count"])
 
     def count(self, search_params: Dict[str, Any]) -> int:
         params: List[Tuple[str, str]] = [("limit", "0")]
@@ -225,9 +245,10 @@ def request_download(client: GbifClient, query: Dict[str, Any], max_records: int
         body["notificationAddresses"] = [email]
         body["sendNotification"] = True
     expected = None
-    if query.get("search_params"):
-        expected = client.count(query["search_params"]) if not dry_run else None
-        if expected is not None and expected > max_records and not force:
+    if not dry_run:
+        expected = client.count_predicate(body["predicate"])
+    if expected is not None:
+        if expected > max_records and not force:
             raise RuntimeError(
                 f"Query matches {expected:,} records (> --max-records {max_records:,}). Narrow the scope "
                 "or pass --force and use the tippecanoe/DuckDB path described in data-pipeline/README.md"
@@ -424,7 +445,7 @@ def _load_cache(path: Path) -> Dict[str, str]:
 
 
 def enrich(client: Optional[GbifClient], species_keys: Sequence[int], dataset_keys: Sequence[str],
-           cache_dir: Path) -> Tuple[Dict[str, str], Dict[str, str]]:
+           cache_dir: Path, workers: int = 8) -> Tuple[Dict[str, str], Dict[str, str]]:
     cache_dir.mkdir(parents=True, exist_ok=True)
     iucn_path = cache_dir / "iucn_by_species_key.json"
     ds_path = cache_dir / "dataset_titles.json"
@@ -432,11 +453,18 @@ def enrich(client: Optional[GbifClient], species_keys: Sequence[int], dataset_ke
     titles = _load_cache(ds_path)
     if client is not None:
         todo = [k for k in species_keys if str(k) not in iucn]
-        for i, key in enumerate(todo, start=1):
-            iucn[str(key)] = client.species_iucn(key)
-            if i % 250 == 0:
-                log(f"IUCN lookups {i}/{len(todo)}")
-                iucn_path.write_text(json.dumps(iucn, sort_keys=True), "utf-8")
+        if todo:
+            log(f"IUCN lookups: {len(todo)} species to fetch ({len(iucn)} cached), {workers} in parallel")
+        done = 0
+        # Bounded concurrency keeps this polite to api.gbif.org while cutting wall time ~8x.
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {pool.submit(client.species_iucn, key): key for key in todo}
+            for fut in as_completed(futures):
+                iucn[str(futures[fut])] = fut.result()
+                done += 1
+                if done % 250 == 0 or done == len(todo):
+                    log(f"IUCN lookups {done}/{len(todo)}")
+                    iucn_path.write_text(json.dumps(iucn, sort_keys=True), "utf-8")
         for key in dataset_keys:
             if key and key not in titles:
                 titles[key] = client.dataset_title(key)
@@ -511,7 +539,7 @@ def build_release_from_download(
     own_dataset_key: Optional[str] = None,
     max_archive_bytes: int = MAX_ARCHIVE_BYTES,
     basin_zooms: Tuple[int, int] = (0, 10),
-    occurrence_zooms: Tuple[int, int, int] = (0, 9, 12),
+    occurrence_zooms: Tuple[int, int, int] = (0, 9, 14),
     max_points_per_tile: int = 4000,
     shard_format: str = "auto",
     raster_tiles_dir: Optional[Path] = None,
@@ -735,9 +763,11 @@ def build_release_from_download(
                                          raster_attribution, max_archive_bytes))
 
     # --- GeoJSON mirrors (only when small enough for the SVG fallback) -----------------------
+    # Busiest basin first: the frontend opens the first basin, and verify-http samples it.
+    ranked = sorted(basin_features, key=lambda f: (-f["properties"]["occurrence_count"], f["properties"]["hybas_id"]))
     basins_geo = {"type": "FeatureCollection", "features": [
         {"type": "Feature", "id": f["id"], "properties": f["properties"],
-         "geometry": round_geometry(simplify_geometry(f["geometry"], 0.003), 4)} for f in basin_features]}
+         "geometry": round_geometry(simplify_geometry(f["geometry"], 0.003), 4)} for f in ranked]}
     basins_geo_bytes = json.dumps(basins_geo, separators=(",", ":")).encode("utf-8")
     basins_geojson_path = None
     if len(basins_geo_bytes) <= 10_000_000:
@@ -851,7 +881,9 @@ def build_release_from_download(
 
     # The root manifest is fetched on every visit: keep it small (sample shard only).
     root_manifest = json.loads(json.dumps(release_manifest))
-    root_manifest["layers"]["basin_shards"] = shard_refs[:1]
+    busiest = ranked[0]["properties"]["shard_path"] if ranked else ""
+    sample = [r for r in shard_refs if r["path"].endswith("/" + busiest)] or shard_refs[:1]
+    root_manifest["layers"]["basin_shards"] = sample[:1]
 
     if target_dir.exists() and force:
         shutil.rmtree(target_dir)
@@ -931,7 +963,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         s.add_argument("--own-dataset-key", default=None, help="basinmap.org GBIF dataset key for overlay dedup")
         s.add_argument("--max-archive-mb", type=float, default=MAX_ARCHIVE_BYTES / 1e6)
         s.add_argument("--basin-zooms", type=int, nargs=2, default=(0, 10))
-        s.add_argument("--occurrence-zooms", type=int, nargs=3, default=(0, 9, 12),
+        s.add_argument("--occurrence-zooms", type=int, nargs=3, default=(0, 9, 14),
                        metavar=("MIN", "POINT_MIN", "MAX"))
         s.add_argument("--max-points-per-tile", type=int, default=4000)
         s.add_argument("--shard-format", choices=("auto", "json", "sqlite"), default="auto")
@@ -972,7 +1004,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     client = client_from_env(args.api_base)
     if args.command == "count":
         query = load_query(args.query)
-        print(json.dumps({"query": str(args.query), "count": client.count(query.get("search_params", {}))}))
+        print(json.dumps({"query": str(args.query), "count": client.count_predicate(query["request"]["predicate"])}))
     elif args.command == "request":
         print(json.dumps(request_download(client, load_query(args.query), args.max_records, args.force,
                                           args.dry_run), indent=2))

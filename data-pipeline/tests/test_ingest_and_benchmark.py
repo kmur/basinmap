@@ -16,6 +16,7 @@ import random
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import urllib.error
 import zipfile
 from pathlib import Path
@@ -122,6 +123,10 @@ class FakeGbif:
         if req.get_header("Authorization"):
             self.auth_headers.append(req.get_header("Authorization"))
         path = url.split("/v1", 1)[1]
+        if path == "/occurrence/search/predicate" and req.get_method() == "POST":
+            body = json.loads(req.data.decode())
+            assert body["limit"] == 0 and body["predicate"]["type"] == "and"
+            return FakeResponse(json.dumps({"count": 75, "results": []}).encode())
         if path.startswith("/occurrence/search"):
             return FakeResponse(json.dumps({"count": 75, "results": []}).encode())
         if path == "/occurrence/download/request" and req.get_method() == "POST":
@@ -134,6 +139,8 @@ class FakeGbif:
             return FakeResponse(json.dumps(self.metadata()).encode())
         if path.startswith("/species/") and path.endswith("/iucnRedListCategory"):
             key = path.split("/")[2]
+            if self.iucn.get(key) == "":
+                return FakeResponse(b"", status=204)  # GBIF: species without a Red List category
             if key not in self.iucn:
                 raise urllib.error.HTTPError(url, 404, "not found", {}, None)
             return FakeResponse(json.dumps({"code": self.iucn[key]}).encode())
@@ -221,6 +228,27 @@ class TestPMTilesLeafDirectoriesAndPartitions(unittest.TestCase):
                 "geometry": {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 0]]]}}
         with self.assertRaises(ValueError):
             release_tiling.build_basin_tiles([feat], 0, 1)
+
+
+class TestGbifClientResilience(unittest.TestCase):
+    def test_empty_204_body_means_no_category_and_transient_errors_retry(self) -> None:
+        calls = {"n": 0}
+
+        def urlopen(req: Any, timeout: float = 0) -> FakeResponse:
+            calls["n"] += 1
+            if "/species/1/" in req.full_url:
+                return FakeResponse(b"", status=204)  # what api.gbif.org returns for unassessed taxa
+            if "/species/2/" in req.full_url and calls["n"] < 4:
+                raise urllib.error.HTTPError(req.full_url, 503, "busy", {}, None)
+            return FakeResponse(b'{"code": "VU"}')
+
+        client = ingest.GbifClient(urlopen=urlopen)
+        with mock.patch.object(ingest.time, "sleep", lambda s: None):  # no real backoff in tests
+            self.assertEqual(client.species_iucn(1), "")
+            self.assertEqual(client.species_iucn(2), "VU")
+            with tempfile.TemporaryDirectory() as tmp:
+                iucn, _ = ingest.enrich(client, [1, 2, 3], [], Path(tmp))
+                self.assertEqual(iucn, {"1": "", "2": "VU", "3": "VU"})
 
 
 class TestGbifDownloadIngest(unittest.TestCase):

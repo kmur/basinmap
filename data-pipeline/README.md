@@ -31,7 +31,7 @@ The pilot query is in `queries/pilot_willamette.json`. It covers the same extent
 python3 data-pipeline/ingest_gbif_download.py count
 ```
 
-If the count is above 2,000,000 (`--max-records`), narrow `YEAR` or the polygon. The pure-Python builder holds the joined records in memory (about 2 KB per record). For larger scopes, use the tippecanoe/DuckDB path below.
+`count` POSTs the exact download predicate to `/v1/occurrence/search/predicate`, so it matches what the download will contain. The pilot scope excludes the eBird Observation Dataset, which is 16.4M of the 17.5M records in this extent (1,112,502 remain as of 2026-11-19). If the count is above 2,000,000 (`--max-records`), narrow `YEAR` or the polygon. The pure-Python builder holds the joined records in memory (about 2 KB per record). For larger scopes, use the tippecanoe/DuckDB path below.
 
 ### 2. Request and fetch the download (preserves the live DOI)
 
@@ -71,7 +71,7 @@ Pass `--previous-version` set to the version currently live in the target bucket
 3. Looks up the IUCN Red List category for each `speciesKey` (`GET /v1/species/<key>/iucnRedListCategory`) and dataset titles (`GET /v1/dataset/<key>`). Results are cached in `work/gbif-<key>/enrichment/` and checksummed into the manifest. `threatened_count` counts records of CR/EN/VU species. Pass `--no-enrich` to skip the lookups: `threatened_count` is then 0 and `provenance.iucn_source` says why.
 4. Writes these tiles:
    - `basins*.pmtiles`: zoom 0–10, simplified to about 1 px per zoom
-   - `occurrences*.pmtiles`: zoom 0–8 `occurrence_bins` (a record count per 1/64-tile cell), and zoom 9–12 record-level `occurrences` (thinned deterministically to 4,000 records per tile below zoom 12; zoom 12 keeps every record)
+   - `occurrences*.pmtiles`: zoom 0–8 `occurrence_bins` (a record count per 1/64-tile cell), and zoom 9–14 record-level `occurrences`. Records on the same tile pixel become one feature with a `count` (stacked site-level coordinates otherwise produce multi-MB tiles). Zooms 9–13 are thinned deterministically to 4,000 locations per tile; zoom 14 keeps every distinct location. For the Willamette pilot, the largest tile is 316 KB.
    Every archive is partitioned below 500 MB.
 5. Writes basin shards plus `basins/index.json`. GeoJSON mirrors for the SVG fallback are written only when small (basins ≤ 10 MB, occurrences ≤ 5,000 records). The root `manifest.json` lists a single sample shard so the per-visit manifest stays small. The full list is in `release_manifest.json`.
 6. Optional: `--own-dataset-key <basinmap GBIF dataset key>` writes `snapshot_own_occurrence_ids.json`, which the frontend uses to remove approved local observations that already appear in the GBIF snapshot.
