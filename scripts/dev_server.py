@@ -26,7 +26,7 @@ if str(Path(__file__).resolve().parent) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from backend_engine import BasinmapBackend, HttpError, MAX_MEDIA_PER_OBSERVATION, MAX_UPLOAD_BYTES  # noqa: E402
-from export_dwca import export_dwca  # noqa: E402
+from export_dwca import export_dwca, run_publication  # noqa: E402
 
 RANGE_RE = re.compile(r"^bytes=(\d*)-(\d*)$")
 
@@ -275,6 +275,37 @@ class LocalBasinmapHandler(http.server.BaseHTTPRequestHandler):
                 lic = body.get("license", "CC-BY 4.0")
                 res = export_dwca(self.backend.conn, self.r2_dir, dataset_license=lic)
                 self._send_json(200, res, "private, no-store")
+                return
+
+            if path == "/api/admin/publication/run" and self.command == "POST":
+                user = self.backend.require_auth(headers.get("Authorization"))
+                if user["role"] != "admin":
+                    raise HttpError(403, "Forbidden: admin role required", "forbidden")
+                raw = self._read_body_bytes()
+                body = json.loads(raw.decode("utf-8")) if raw else {}
+                res = run_publication(
+                    self.backend.conn, self.r2_dir, f"manual:{user['id']}",
+                    public_base_url="http://127.0.0.1:8787/api/r2", force=bool(body.get("force")),
+                    rebuild_overlay=self.backend.rebuild_approved_overlay,
+                )
+                self._send_json(200, res, "private, no-store")
+                return
+
+            if path == "/api/admin/publication/status" and self.command == "GET":
+                user = self.backend.require_auth(headers.get("Authorization"))
+                if user["role"] not in ("reviewer", "admin"):
+                    raise HttpError(403, "Forbidden: reviewer or admin role required", "forbidden")
+                runs = self.backend.conn.execute(
+                    "SELECT run_id, trigger, started_at, finished_at, export_id, error FROM publication_runs ORDER BY started_at DESC LIMIT 20"
+                ).fetchall()
+                exports_ = self.backend.conn.execute(
+                    """
+                    SELECT export_id, created_at, record_count, media_count, sha256, archive_snapshot_r2_key, excluded_license_count,
+                           validator_job_id, validator_status, validator_checked_at, crawl_status
+                    FROM publication_exports ORDER BY created_at DESC LIMIT 20
+                    """
+                ).fetchall()
+                self._send_json(200, {"runs": [dict(r) for r in runs], "exports": [dict(r) for r in exports_]}, "private, no-store")
                 return
 
             self._send_json(404, {"error": "Not found", "path": path}, "private, no-store")

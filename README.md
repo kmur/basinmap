@@ -44,7 +44,9 @@ Open-source Web-GIS application and community biodiversity observation publishin
 ├── hosting-and-gbif-publishing-plan.md
 ├── migrations/
 │   ├── 0001_init.sql               # D1 SQLite schema & pilot ORCID users
-│   └── 0002_auth_sessions.sql      # Server-side sessions, last login, licence acceptance
+│   ├── 0002_auth_sessions.sql      # Server-side sessions, last login, licence acceptance
+│   └── 0003_publication_pipeline.sql  # Export hashes/snapshots, validator verdicts, publication_runs
+├── ops/github-workflows/d1-backup.yml  # Nightly encrypted D1 backup (copy into .github/workflows/)
 ├── data-pipeline/                  # Reproducible pure-Python spatial release pipeline
 │   ├── pmtiles_writer.py           # PMTiles v3 (leaf dirs, MVT + WebP raster) writer/inspector/range reader
 │   ├── build_release.py            # Demo release builder (synthetic v0.1.0-demo)
@@ -61,11 +63,13 @@ Open-source Web-GIS application and community biodiversity observation publishin
 │   ├── build_dist.py               # Compiles src/frontend/*.ts to ES2022 JS in ./dist
 │   ├── backend_engine.py           # Local SQLite + R2 backend mirroring src/worker/index.ts
 │   ├── dev_server.py               # Local HTTP dev server with 206 ranges & API outage simulation
-│   └── export_dwca.py              # DwC-A (.zip) exporter, validator, and GBIF Validator / UAT CLI
+│   ├── export_dwca.py              # DwC-A exporter + publication run (validator, crawl, reconcile, UAT CLI)
+│   └── backup_restore_check.py     # Restore drill for `wrangler d1 export` dumps
 ├── src/
 │   ├── frontend/                   # MapLibre GL JS + PMTiles SPA (index.html, styles.css, types.ts, app.ts,
 │   │                               #   contrib.ts = submission drawer, uploads, My submissions, reviewer queue)
-│   └── worker/                     # index.ts (API & Static Assets), auth.ts (ORCID OAuth + sessions), media.ts (EXIF)
+│   └── worker/                     # index.ts (API, Static Assets, cron), auth.ts (ORCID OAuth + sessions), media.ts (EXIF),
+│                                   #   publication.ts (DwC-A + GBIF), overlay.ts (approved.geojson)
 ├── tests/                          # Frontend, backend, media, DwC-A, Worker harness (worker_harness.test.mts) & browser E2E
 ├── package.json
 ├── r2-cors.json
@@ -126,6 +130,71 @@ Until these are set, the API fails closed: `/api/auth/login` returns `503 orcid_
 
 ---
 
+## Publishing to GBIF & Backups (Stage 6)
+
+The Worker publishes the community dataset on its own schedule. A cron trigger (`17 10 * * *` UTC, quiet hours in the Americas) runs `src/worker/publication.ts`:
+
+1. Polls any pending GBIF Data Validator jobs and stores the verdict on the export row.
+2. Reconciles records GBIF has indexed from our dataset (`GBIF_DATASET_KEY`) into D1: `publication_status = 'indexed_by_gbif'` plus `gbif_occurrence_key`.
+3. Rebuilds the Darwin Core Archive from approved records whose licence is compatible with the dataset licence (`CC-BY 4.0` dataset → `CC-BY 4.0` and `CC0 1.0` records). When the record content hash is unchanged it skips the rebuild; otherwise it writes `/exports/archive/<export_id>.zip` (immutable), `/exports/dwca-latest.zip` and `/exports/eml.xml`. Records that are no longer approved are withdrawn and logged in the revision trail.
+4. Submits the new archive to the GBIF Data Validator and asks the GBIF registry to crawl the dataset.
+5. Writes `/exports/status.json` (public; latest export, validator verdict, counts by publication status) and logs the run in `publication_runs`.
+
+Status changes never touch `observations.updated_at`, so Darwin Core `modified` only moves when a record really changes. Staging targets `api.gbif-uat.org`; production targets `api.gbif.org`.
+
+Admins can trigger a run (`POST /api/admin/publication/run`, body `{"force": true}` to rebuild regardless of the hash). Reviewers and admins can read run history at `GET /api/admin/publication/status`.
+
+**Secrets** (drop `--env staging` for production). Use a dedicated GBIF account for the bot, not a personal one:
+
+```bash
+npx wrangler secret put GBIF_USER --env staging
+npx wrangler secret put GBIF_PWD --env staging
+```
+
+Without them the archive is still built and served, and the validator and crawl steps are skipped. After registering the dataset, set `GBIF_DATASET_KEY` in `wrangler.jsonc` (`env.staging.vars` for UAT). To register on UAT, your GBIF UAT account must be an editor for a publishing organisation and installation:
+
+```bash
+python3 scripts/export_dwca.py register-uat --org-key <ORG_UUID> --installation-key <INSTALLATION_UUID> \
+  --dwca-url https://staging.basinmap.org/api/r2/exports/dwca-latest.zip --dry-run   # drop --dry-run to register
+```
+
+The same pipeline runs locally against the emulator database: `python3 scripts/export_dwca.py run` (or `export`, `validate-gbif --wait`, `reconcile`).
+
+**Workers Free CPU note.** The archive is zipped with the streaming `CompressionStream` API, and reconciliation is capped at 40 pages × 300 records per run. That fits comfortably for thousands of records. If cron runs start failing with CPU-limit errors as the dataset grows, move to Workers Paid (cron CPU up to 15 min) or run `scripts/export_dwca.py` from a scheduled GitHub Action.
+
+### Nightly D1 backups
+
+`ops/github-workflows/d1-backup.yml` is a GitHub Action. Copy it to `.github/workflows/` to enable it. At 11:47 UTC it does the following:
+
+1. Runs `wrangler d1 export basinmap-db --remote`.
+2. Restores the dump into scratch SQLite and checks integrity and the core tables (`scripts/backup_restore_check.py`).
+3. Compresses and encrypts the dump with [age](https://age-encryption.org).
+4. Keeps it as a workflow artifact:
+
+| Backup | Kept for |
+|---|---|
+| Daily | 7 days |
+| Weekly (Sunday) | 28 days |
+| Monthly (1st) | 90 days |
+
+Optionally, it also copies the backup to S3-compatible storage outside Cloudflare.
+
+```bash
+age-keygen -o basinmap-backup.key          # keep this private key OFFLINE (password manager / hardware)
+gh secret set BACKUP_AGE_RECIPIENT --body "age1..."   # the public key printed by age-keygen
+# optional off-site copy: BACKUP_S3_ENDPOINT, BACKUP_S3_BUCKET, BACKUP_S3_ACCESS_KEY_ID, BACKUP_S3_SECRET_ACCESS_KEY
+```
+
+The workflow refuses to run without `BACKUP_AGE_RECIPIENT`. The `CLOUDFLARE_API_TOKEN` secret needs D1 edit permission. To restore:
+
+```bash
+age -d -i basinmap-backup.key basinmap-db-<stamp>.sql.gz.age | gunzip > restore.sql
+python3 scripts/backup_restore_check.py restore.sql
+npx wrangler d1 execute basinmap-db-restore --remote --file restore.sql   # into a NEW database, then rebind
+```
+
+---
+
 ## Deployment Workflow (`staging` -> `main`)
 
 Saving files locally does not alter live sites until committed and pushed to GitHub:
@@ -155,9 +224,9 @@ GitHub Actions ([.github/workflows/deploy.yml](.github/workflows/deploy.yml)) au
 | **Stage 1** | Complete & Live | Reproducible spatial pipeline, `v0.1.0-demo` PMTiles & HydroBASINS shards, HTTP `206` check, manifest cleanup |
 | **Stage 2** | Complete & Live | Cloudflare Workers Static Assets scaffold, MapLibre GL JS + PMTiles SPA, basin shard inspector, outage resilience |
 | **Stage 3** | Complete & Live | D1 observation/revision/media schema, streaming uploads, EXIF stripping, review workflow, DwC-A `.zip` exporter |
-| **Stage 4** | Code complete; live `v0.2.0` pending | `ingest_gbif_download.py` (real GBIF DOI download + HydroBASINS), `< 500 MB` partitioning, WebP raster PMTiles, `benchmark_range_pilot.py`; operator steps in [data-pipeline/README.md](data-pipeline/README.md#stage-4-real-gbif--hydrobasins-pilot-release-v020) |
+| **Stage 4** | Live on staging (`v0.2.0`, DOI 10.15468/dl.84n75r) | `ingest_gbif_download.py` (real GBIF DOI download + HydroBASINS), `< 500 MB` partitioning, WebP raster PMTiles, `benchmark_range_pilot.py`; operator steps in [data-pipeline/README.md](data-pipeline/README.md#stage-4-real-gbif--hydrobasins-pilot-release-v020) |
 | **Stage 5** | Code complete; secrets pending | ORCID OAuth + D1 sessions, Turnstile, submission drawer with map picking & photo upload progress, My submissions, reviewer queue with EXIF GPS checks (see [Accounts & spam protection](#accounts--spam-protection-stage-5)) |
-| **Stage 6** | Planned | In-Worker / scheduled DwC-A `.zip` generation, live GBIF Data Validator + `gbif-uat.org` registration, quiet-hours D1 backups |
+| **Stage 6** | Code complete; GBIF secrets & backup workflow install pending | Cron-driven DwC-A export in the Worker, GBIF Validator + crawl + `indexed_by_gbif` reconciliation, `/exports/status.json`, encrypted nightly D1 backups with restore drill (see [Publishing to GBIF & backups](#publishing-to-gbif--backups-stage-6)) |
 | **Stage 7** | Planned | Public GBIF *Cyprinodontiformes* (Killifish) Backbone Taxonomy, IUCN status & GBIF Occurrence Download pipeline |
 | **Stage 8** | Planned | Public HydroBASINS v1c (L3/L6/L8) & BasinATLAS v1.0 climate/habitat ingestion + spatial join into `< 500 MB` PMTiles & shards |
 | **Stage 9** | Planned | Real OSM/satellite basemaps, genus/synonym/date search, color-coded lettered Species Key & grouped-species tooltips |

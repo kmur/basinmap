@@ -8,7 +8,7 @@
  * Run: node --test tests/worker_harness.test.mts   (Node >= 22.18; invoked by tests/test_worker_harness.py)
  */
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -69,6 +69,7 @@ function makeR2() {
     httpMetadata: meta,
     body: new Blob([bytes]).stream(),
     arrayBuffer: async () => bytes.slice().buffer,
+    text: async () => new TextDecoder().decode(bytes),
   });
   return {
     store,
@@ -96,6 +97,8 @@ function makeR2() {
 const fetchLog: Array<{ url: string; body: string }> = [];
 let nextOrcid = { orcid: "0000-0002-1825-0097", name: "Pilot Field Contributor" };
 let turnstileSuccess = true;
+const gbifCalls: Array<{ kind: string; auth?: string; form?: FormData }> = [];
+let gbifIndexed: Array<{ key: number; occurrenceID: string }> = [];
 globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = String(input);
   const body = init?.body ? String(init.body) : "";
@@ -108,6 +111,22 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     return Response.json({ access_token: "x", token_type: "bearer", scope: "/authenticate", ...nextOrcid });
   }
   if (url.includes("turnstile/v0/siteverify")) return Response.json({ success: turnstileSuccess });
+  if (url === "https://api.gbif.org/v1/validation" && init?.method === "POST") {
+    gbifCalls.push({ kind: "validate", auth: String((init.headers as any)?.authorization || ""), form: init.body as FormData });
+    return Response.json({ key: `val-${gbifCalls.length}`, status: "SUBMITTED" });
+  }
+  if (url.startsWith("https://api.gbif.org/v1/validation/")) {
+    gbifCalls.push({ kind: "poll" });
+    return Response.json({ key: url.split("/").pop(), status: "FINISHED", indexeable: true });
+  }
+  if (url.startsWith("https://api.gbif-uat.org/v1/dataset/") && url.endsWith("/crawl")) {
+    gbifCalls.push({ kind: "crawl", auth: String((init?.headers as any)?.authorization || "") });
+    return new Response(null, { status: 204 });
+  }
+  if (url.startsWith("https://api.gbif-uat.org/v1/occurrence/search?")) {
+    gbifCalls.push({ kind: "search" });
+    return Response.json({ offset: 0, limit: 300, endOfRecords: true, results: gbifIndexed });
+  }
   throw new Error(`unexpected outbound fetch ${url}`);
 }) as typeof fetch;
 
@@ -481,4 +500,102 @@ test("upload guards: Content-Length required, size cap, per-observation limit", 
   }
   const eleventh = await call(env, `/api/uploads/${occId}`, { method: "PUT", headers: { cookie, origin: ORIGIN, "content-length": String(img.byteLength) }, body: img });
   assert.equal(eleventh.status, 409);
+});
+
+
+test("publication pipeline: DwC-A export, validator, crawl, reconciliation, overlay, withdrawal, cron", async () => {
+  const env = makeEnv({
+    PUBLICATION_BASE_URL: "https://staging.basinmap.org/api/r2",
+    GBIF_API_BASE: "https://api.gbif-uat.org/v1",
+    GBIF_DATASET_KEY: "11111111-2222-3333-4444-555555555555",
+    GBIF_USER: "basinmap-bot",
+    GBIF_PWD: "bot-password",
+  });
+  const cookie = await signIn(env, contributor);
+  const admin = await signIn(env, reviewer); // ADMIN_ORCID_IDS -> admin
+  const post = (path: string, who: string, body: unknown, extra: Record<string, string> = {}) =>
+    call(env, path, { method: "POST", headers: { cookie: who, origin: ORIGIN, "content-type": "application/json", ...extra }, body: json(body) });
+  const create = async (key: string, over: Record<string, unknown>) =>
+    (await (await post("/api/observations", cookie, { ...baseObs, ...over }, { "idempotency-key": key, "x-turnstile-token": "t" })).json()).observation;
+  const a = await create("pub-a", { scientificName: "Oncorhynchus kisutch" });
+  const b = await create("pub-b", { scientificName: "Castor canadensis", license: "CC0 1.0" });
+  const c = await create("pub-c", { scientificName: "Ardea herodias" });
+  const img = jpegWithGps(44, 3, 123, 5);
+  await call(env, `/api/uploads/${encodeURIComponent(a.occurrence_id)}`, {
+    method: "PUT", headers: { cookie, origin: ORIGIN, "content-length": String(img.byteLength) }, body: img,
+  });
+  for (const o of [a, b]) assert.equal((await post(`/api/review/${encodeURIComponent(o.occurrence_id)}/approve`, admin, { notes: "ok" })).status, 200);
+
+  // Contributors cannot trigger publication.
+  assert.equal((await post("/api/admin/publication/run", cookie, {})).status, 403);
+
+  const run1 = await (await post("/api/admin/publication/run", admin, {})).json();
+  assert.equal(run1.export.changed, true);
+  assert.equal(run1.export.record_count, 2, "CC0 record is publishable inside the CC-BY dataset; unapproved excluded");
+  assert.equal(run1.export.media_count, 1);
+  assert.equal(run1.export.newly_exported, 2);
+  assert.equal(run1.validator, "submitted");
+  assert.equal(run1.crawl, "requested");
+  const v = gbifCalls.find((g) => g.kind === "validate")!;
+  assert.equal(v.auth, `Basic ${btoa("basinmap-bot:bot-password")}`);
+  assert.ok(v.form instanceof FormData && v.form.get("file") instanceof Blob && v.form.get("validationRequest"));
+  const store = env.PUBLIC_BUCKET.store;
+  const latest = store.get("exports/dwca-latest.zip");
+  assert.equal(latest.httpMetadata.cacheControl, "public, max-age=300, must-revalidate");
+  assert.ok(store.get(`exports/archive/${run1.export.export_id}.zip`));
+  assert.equal(store.get(`exports/archive/${run1.export.export_id}.zip`).httpMetadata.cacheControl, "public, max-age=31536000, immutable");
+  if (process.env.DWCA_OUT) writeFileSync(process.env.DWCA_OUT, latest.bytes);
+  const st1 = JSON.parse(new TextDecoder().decode(store.get("exports/status.json").bytes));
+  assert.equal(st1.latest_export.record_count, 2);
+  assert.equal(st1.archive_url, "https://staging.basinmap.org/api/r2/exports/dwca-latest.zip");
+  assert.equal(st1.approved_records_by_publication_status.exported, 2);
+  assert.ok(!JSON.stringify(st1).includes("verbatim"), "status.json must not contain private data");
+  const statusOf = (id: string) =>
+    (env.DB.raw.prepare("SELECT publication_status, gbif_occurrence_key FROM observations WHERE occurrence_id = ?").get(id) as any);
+  assert.equal(statusOf(a.occurrence_id).publication_status, "exported");
+  assert.equal(statusOf(c.occurrence_id).publication_status, "not_exported");
+
+  // Unchanged content -> no new archive and no new crawl; validator job polled to completion.
+  const crawlsBefore = gbifCalls.filter((g) => g.kind === "crawl").length;
+  const run2 = await (await post("/api/admin/publication/run", admin, {})).json();
+  assert.equal(run2.export.changed, false);
+  assert.equal(gbifCalls.filter((g) => g.kind === "crawl").length, crawlsBefore);
+  assert.deepEqual(run2.validations, [{ export_id: run1.export.export_id, status: "finished" }]);
+  assert.equal(run2.status.latest_export.gbif_validator.indexeable, true);
+
+  // GBIF indexes record A -> reconciliation marks it and never regresses it on export.
+  gbifIndexed = [{ key: 4400000123, occurrenceID: a.occurrence_id }, { key: 1, occurrenceID: "urn:someone-else:1" }];
+  const run3 = await (await post("/api/admin/publication/run", admin, { force: true })).json();
+  assert.deepEqual({ checked: run3.reconcile.checked, newly: run3.reconcile.newly_indexed }, { checked: 2, newly: 1 });
+  assert.equal(statusOf(a.occurrence_id).publication_status, "indexed_by_gbif");
+  assert.equal(statusOf(a.occurrence_id).gbif_occurrence_key, 4400000123);
+  assert.equal(run3.export.changed, true, "force=true always writes a new archive");
+  assert.equal(run3.export.newly_exported, 0, "indexed record keeps its status");
+
+  // Overlay hides a record only when the live map release already contains it.
+  let overlay = JSON.parse(new TextDecoder().decode(store.get("overlays/approved.geojson").bytes));
+  assert.deepEqual(overlay.features.map((f: any) => f.id).sort(), [a.occurrence_id, b.occurrence_id].sort());
+  await env.PUBLIC_BUCKET.put("releases/manifest.json", json({ current_version: "v9", layers: { snapshot_own_occurrence_ids: "/releases/v9/snapshot_own_occurrence_ids.json" } }));
+  await env.PUBLIC_BUCKET.put("releases/v9/snapshot_own_occurrence_ids.json", json([a.occurrence_id]));
+
+  // Withdrawal: B no longer approved -> omitted from the next archive, status back to not_exported.
+  await post(`/api/review/${encodeURIComponent(b.occurrence_id)}/needs_changes`, admin, { notes: "check id" });
+  overlay = JSON.parse(new TextDecoder().decode(store.get("overlays/approved.geojson").bytes));
+  assert.deepEqual(overlay.features.map((f: any) => f.id), [], "A is in the live snapshot, B is no longer approved");
+  const pending: Promise<unknown>[] = [];
+  await worker.scheduled({} as any, env, { waitUntil: (p: Promise<unknown>) => pending.push(p) } as any);
+  await Promise.all(pending);
+  assert.equal(statusOf(b.occurrence_id).publication_status, "not_exported");
+  const lastRun = env.DB.raw.prepare("SELECT trigger, error, export_id FROM publication_runs ORDER BY started_at DESC, rowid DESC LIMIT 1").get() as any;
+  assert.equal(lastRun.trigger, "cron");
+  assert.equal(lastRun.error, null);
+  const lastExport = env.DB.raw.prepare("SELECT record_count FROM publication_exports WHERE export_id = ?").get(lastRun.export_id) as any;
+  assert.equal(lastExport.record_count, 1);
+  const revs = env.DB.raw.prepare("SELECT change_type, notes FROM observation_revisions WHERE occurrence_id = ? ORDER BY revision_number").all(b.occurrence_id) as any[];
+  assert.equal(revs[revs.length - 2].change_type, "needs_changes");
+  assert.match(revs[revs.length - 1].notes, /^Withdrawn: omitted from DwC-A /);
+
+  // Admin status endpoint.
+  const statusRes = await (await call(env, "/api/admin/publication/status", { headers: { cookie: admin } })).json();
+  assert.ok(statusRes.runs.length >= 4 && statusRes.exports.length >= 3);
 });

@@ -97,7 +97,8 @@ class TestLocalBackendStage5(unittest.TestCase):
         self.backend.close()
         self.backend = backend_engine.BasinmapBackend(self.db_path, self.public_r2, Path(self.tmp.name) / "private-r2")
         names = [r[0] for r in self.backend.conn.execute("SELECT name FROM _local_migrations ORDER BY name")]
-        self.assertEqual(names, ["0001_init.sql", "0002_auth_sessions.sql"])
+        self.assertEqual(names, sorted(p.name for p in (ROOT_DIR / "migrations").glob("*.sql")))
+        self.assertIn("0002_auth_sessions.sql", names)
         cols = {r[1] for r in self.backend.conn.execute("PRAGMA table_info(observations)")}
         self.assertIn("license_accepted_at", cols)
 

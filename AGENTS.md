@@ -6,7 +6,7 @@ This repository implements **basinmap.org** (production) and **staging.basinmap.
 
 ## 1. Current State of the Repository
 
-Stages 1–3 are implemented, tested, and deployed live on Cloudflare (`main` -> `https://basinmap.org`, `staging` -> `https://staging.basinmap.org`, public R2 -> `https://data.basinmap.org`):
+Stages 1–3 are implemented, tested, and deployed live (Stage 4's `v0.2.0` release is live on staging; Stages 5–6 are code complete) on Cloudflare (`main` -> `https://basinmap.org`, `staging` -> `https://staging.basinmap.org`, public R2 -> `https://data.basinmap.org`):
 
 - **Infrastructure & CI/CD:** `wrangler.jsonc`, `r2-cors.json`, `.github/workflows/deploy.yml`, `package.json`, `tsconfig.json`.
 - **Spatial Pipeline (`data-pipeline/`):** Pure-Python PMTiles v3 & MVT v2.1 builder (`pmtiles_writer.py`), reproducible release builder (`build_release.py`), manifest-aware R2 publisher/verifier/cleanup (`publish_release.py`), and sample Willamette Basin `v0.1.0-demo` release in `public-r2/`.
@@ -33,6 +33,7 @@ Stages 1–3 are implemented, tested, and deployed live on Cloudflare (`main` ->
    - Never add age-based R2 Object Lifecycle rules to `/releases/`.
    - Release cleanup must run via `data-pipeline/publish_release.py cleanup`, which reads `releases/manifest.json`, retains only `current_version` and `previous_version`, and refuses to touch `/media/`, `/exports/`, `/overlays/`, or `/releases/manifest.json`.
    - Public observation media referenced by GBIF (`multimedia.txt`) must live permanently under `/media/<media_id>.jpg`, never under `/releases/<version>/`.
+   - `/exports/archive/<export_id>.zip` snapshots are immutable and never deleted; `dwca-latest.zip`, `eml.xml` and `status.json` are overwritten by the publication run.
 2. **Vector Tile & CDN Size Discipline:**
    - Keep `basins.pmtiles` attributes strictly scalar (`occurrence_count`, `species_count`, `threatened_count`, `min_year`, `max_year`, `shard_path`). Never embed species lists inside vector tiles.
    - Keep individual `.pmtiles` and COG objects on `data.basinmap.org` **under 500 MB** (Cloudflare CDN bypasses caching above 512 MB), or route multi-GB layers through a range/tile Worker and benchmark cost.
@@ -58,6 +59,8 @@ Stages 1–3 are implemented, tested, and deployed live on Cloudflare (`main` ->
    - Keep `src/worker/index.ts` and `scripts/backend_engine.py` behavior synchronized when adding or modifying API endpoints (same JSON shapes via `serializeObservation` / `_row_to_public_dict`), and cover Worker changes in `tests/worker_harness.test.mts`.
    - Worker modules import siblings with explicit `.ts` extensions and use `import type` for interfaces (required for Node type stripping in the harness; esbuild/wrangler accept both).
    - `scripts/build_dist.py` uses a small custom TypeScript stripper (output is syntax-checked with Node/JSC). In `src/frontend/*.ts` avoid: `let x: T;` without an initializer, function-typed parameters (`cb: () => void`; use `any`), `type` aliases, enums, parameter properties, and `import type`.
+   - Publication-status transitions (`exported`, `indexed_by_gbif`) must never change `observations.updated_at` (Darwin Core `modified`) and must never regress `indexed_by_gbif`. Keep `src/worker/publication.ts` and `scripts/export_dwca.py` producing identical `meta.xml` and column order (enforced by `tests/test_prompt6_publication.py`).
+   - Backups are encrypted before leaving the runner; never upload a plaintext D1 dump anywhere.
    - `migrations/*.sql` are applied in order by wrangler (D1) and by `backend_engine.init_db` (tracked in `_local_migrations`); add new files, never edit applied ones.
    - Do not remove the `wrangler.jsonc` `"workers_dev": false` / `"preview_urls": false` settings or the `getWorkerSubdomain` `10007` patch in `.github/workflows/deploy.yml` until `wrangler` upstream resolves the `/workers/workers/` 10007 error on new custom-domain Workers.
 
@@ -92,8 +95,8 @@ Always develop and test on the `staging` branch first (`https://staging.basinmap
   `data-pipeline/ingest_gbif_download.py` (GBIF async download with DOI/key/query/SHA-256 provenance + HydroBASINS join), `release_tiling.py` (`< 500 MB` partitioning recorded as `layers.*.partitions`), `benchmark_range_pilot.py` (cold/warm 206, `CF-Cache-Status`, Section 7 costs). Remaining: run `count → request → fetch → build` on a machine with GBIF access, publish `v0.2.0` with `publish_release.py --mode rclone` to `basinmap-public-data-staging`, benchmark, then production. Real releases are built into git-ignored `build-r2/`, never committed. Keep new manifests backward compatible: the frontend reads `layers.<name>.partitions` when present and falls back to `layers.<name>.path`.
 - **Stage 5 — Contributor Submission & Reviewer UI + Live ORCID OAuth & Turnstile (code complete):**
   Remaining: register ORCID sandbox (staging) and production clients, set the Worker secrets listed in README.md, promote reviewer accounts, verify sign-in → submit → review on `https://staging.basinmap.org`, then merge to `main`. Non-JPEG photos stay private on approval until an Images binding (`IMAGES`) is configured.
-- **Stage 6 — Automated DwC-A Publishing, GBIF Validation & Off-Provider Backups:**
-  Wire DwC-A `.zip` generation into the Worker (or scheduled GitHub Action) writing `/exports/dwca-latest.zip`, validate live against `https://api.gbif.org/v1/validation` and `https://api.gbif-uat.org/v1/dataset`, reconcile GBIF-indexed `occurrenceID`s back into D1 (`publication_status = 'indexed_by_gbif'`), and add a quiet-hours scheduled GitHub Action running `wrangler d1 export` + encrypted off-Cloudflare backup retention.
+- **Stage 6 — Automated DwC-A Publishing, GBIF Validation & Off-Provider Backups (code complete):**
+  `src/worker/publication.ts` (cron `17 10 * * *` + `POST /api/admin/publication/run`), `src/worker/overlay.ts`, `migrations/0003_publication_pipeline.sql`, Python mirror in `scripts/export_dwca.py run`, restore drill `scripts/backup_restore_check.py`, backup Action in `ops/github-workflows/d1-backup.yml`. Remaining: set `GBIF_USER`/`GBIF_PWD` Worker secrets, register the UAT dataset and set `env.staging.vars.GBIF_DATASET_KEY`, copy the backup workflow into `.github/workflows/` with `BACKUP_AGE_RECIPIENT`, confirm a crawl on UAT, then production registration.
 - **Stage 7 — Public GBIF *Cyprinodontiformes* (Killifish) Taxonomy, IUCN & Occurrence Pipeline:**
   Build an independent ingestion pipeline querying the public **GBIF Backbone Taxonomy** (`orderKey` for *Cyprinodontiformes*), **GBIF Occurrence Download API** (real DOI + provenance), and public IUCN/FishBase taxonomic metadata from GBIF/public APIs (no external association databases or KMI files), emitting a clean `species_index.json`, `taxonomy_aliases.json`, and `occurrences.pmtiles`.
 - **Stage 8 — Public HydroSHEDS / HydroBASINS Level 3/6/8 & BasinATLAS Environment Pipeline:**

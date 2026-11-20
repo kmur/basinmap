@@ -20,8 +20,11 @@ import {
   orcidConfigured,
 } from "./auth.ts";
 import { detectMagicMime, extractExif, haversineMeters, stripJpegExifSegments } from "./media.ts";
+import { rebuildApprovedOverlay } from "./overlay.ts";
+import type { PublicationEnv } from "./publication.ts";
+import { runPublication } from "./publication.ts";
 
-export interface Env extends AuthEnv {
+export interface Env extends AuthEnv, PublicationEnv {
   ASSETS: Fetcher;
   DB?: D1Database;
   PUBLIC_BUCKET?: R2Bucket;
@@ -368,73 +371,6 @@ async function recordRevision(
     )
     .bind(occId, revision, actorId, changeType, JSON.stringify(row ? serializeObservation(row, true) : {}), notes, now)
     .run();
-}
-
-async function rebuildApprovedOverlay(db: D1Database, publicBucket: R2Bucket): Promise<number> {
-  const { results } = await db
-    .prepare(
-      `SELECT * FROM observations
-       WHERE review_status = 'approved'
-         AND publication_status != 'indexed_by_gbif'
-       ORDER BY occurrence_id ASC`
-    )
-    .all<Record<string, unknown>>();
-
-  const features: Array<Record<string, unknown>> = [];
-  for (const row of results) {
-    const mediaRes = await db
-      .prepare(
-        `SELECT public_r2_key FROM media_intake
-         WHERE occurrence_id = ? AND derivative_status = 'public_sanitized'
-         ORDER BY media_id ASC`
-      )
-      .bind(row.occurrence_id)
-      .all<{ public_r2_key: string }>();
-
-    features.push({
-      type: "Feature",
-      id: row.occurrence_id,
-      properties: {
-        occurrenceID: row.occurrence_id,
-        scientificName: row.scientific_name,
-        taxonKey: row.taxon_key,
-        eventDate: row.event_date,
-        year: row.year,
-        basisOfRecord: row.basis_of_record,
-        hybas_id: row.hybas_id,
-        coordinateUncertaintyInMeters: row.public_coordinate_uncertainty_m,
-        informationWithheld: row.information_withheld,
-        isSensitiveSpecies: Boolean(row.is_sensitive_species),
-        license: row.license,
-        rightsHolder: row.rights_holder,
-        recordedByID: row.recorded_by_id,
-        identifiedByID: row.identified_by_id,
-        reviewStatus: row.review_status,
-        publicationStatus: row.publication_status,
-        provisional: true,
-        mediaUrls: mediaRes.results.map((m) => `/${m.public_r2_key}`),
-      },
-      geometry: {
-        type: "Point",
-        coordinates: [row.public_longitude, row.public_latitude],
-      },
-    });
-  }
-
-  const fc = {
-    type: "FeatureCollection",
-    name: "approved_local_observations",
-    generated_at: new Date().toISOString(),
-    features,
-  };
-
-  await publicBucket.put("overlays/approved.geojson", JSON.stringify(fc, null, 2) + "\n", {
-    httpMetadata: {
-      contentType: "application/json; charset=utf-8",
-      cacheControl: "public, max-age=60, must-revalidate",
-    },
-  });
-  return features.length;
 }
 
 // ---------------------------------------------------------------------------
@@ -959,7 +895,40 @@ async function reviewObservation(request: Request, env: Env, db: D1Database, occ
   );
 }
 
+/** Admin-only publication controls: run the pipeline now, or inspect recent runs/exports. */
+async function publicationAdmin(request: Request, env: Env, db: D1Database, action: string): Promise<Response> {
+  const auth = await requireUser(request, env);
+  if (auth instanceof Response) return auth;
+  if (action === "run" && auth.user.role !== "admin") return errorResponse(403, "Forbidden: admin role required", "forbidden");
+  if (action === "status" && !isReviewer(auth.user)) return errorResponse(403, "Forbidden: reviewer or admin role required", "forbidden");
+  if (action === "run") {
+    if (!env.PUBLIC_BUCKET) return errorResponse(503, "PUBLIC_BUCKET binding unavailable", "storage_unavailable");
+    const body = (await request.json().catch(() => ({}))) as { force?: boolean };
+    try {
+      return jsonResponse(await runPublication(env, `manual:${auth.user.id}`, Boolean(body.force)), 200);
+    } catch (err) {
+      return errorResponse(500, `Publication run failed: ${err instanceof Error ? err.message : String(err)}`, "publication_failed");
+    }
+  }
+  const runs = await db
+    .prepare("SELECT run_id, trigger, started_at, finished_at, export_id, error FROM publication_runs ORDER BY started_at DESC LIMIT 20")
+    .all();
+  const exportsRes = await db
+    .prepare(
+      `SELECT export_id, created_at, record_count, media_count, sha256, archive_snapshot_r2_key, excluded_license_count,
+              validator_job_id, validator_status, validator_checked_at, crawl_status
+       FROM publication_exports ORDER BY created_at DESC LIMIT 20`
+    )
+    .all();
+  return jsonResponse({ runs: runs.results, exports: exportsRes.results }, 200);
+}
+
 export default {
+  /** Cron trigger (wrangler.jsonc `triggers.crons`): quiet-hours publication pipeline. */
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(runPublication(env, "cron").then(() => undefined));
+  },
+
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const { pathname } = url;
@@ -1049,6 +1018,9 @@ export default {
     if (mediaMatch && request.method === "GET") return getPrivateMedia(request, env, db, mediaMatch[1]);
 
     if (pathname === "/api/review/pending" && request.method === "GET") return listReviewQueue(request, env, db);
+
+    if (pathname === "/api/admin/publication/run" && request.method === "POST") return publicationAdmin(request, env, db, "run");
+    if (pathname === "/api/admin/publication/status" && request.method === "GET") return publicationAdmin(request, env, db, "status");
 
     const reviewMatch = pathname.match(/^\/api\/review\/([^/]+)\/(approve|needs_changes)$/);
     if (reviewMatch && request.method === "POST") {

@@ -1,0 +1,122 @@
+name: Nightly D1 backup
+
+# Copy this file to .github/workflows/d1-backup.yml to enable it.
+#
+# Runs in the quiet hours (11:47 UTC = 03:47 Pacific), 30 minutes after the publication
+# cron (10:17 UTC) so the backup captures that night's export bookkeeping.
+#
+# Required secrets: CLOUDFLARE_API_TOKEN (needs D1:Edit), CLOUDFLARE_ACCOUNT_ID,
+#                   BACKUP_AGE_RECIPIENT (an age public key, "age1..."; keep the private key offline).
+# Optional secrets: BACKUP_S3_ENDPOINT, BACKUP_S3_BUCKET, BACKUP_S3_ACCESS_KEY_ID,
+#                   BACKUP_S3_SECRET_ACCESS_KEY: also copies the encrypted dump to S3-compatible
+#                   storage outside Cloudflare (e.g. Backblaze B2, AWS S3, Wasabi).
+
+on:
+  schedule:
+    - cron: "47 11 * * *"
+  workflow_dispatch:
+    inputs:
+      database:
+        description: "D1 database to back up"
+        default: "basinmap-db"
+        type: choice
+        options: [basinmap-db, basinmap-db-staging]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: d1-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      BACKUP_AGE_RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
+      DB_NAME: ${{ inputs.database || 'basinmap-db' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Refuse to run without an encryption recipient
+        run: |
+          if [ -z "${BACKUP_AGE_RECIPIENT}" ]; then
+            echo "::error::BACKUP_AGE_RECIPIENT secret is not set; refusing to store an unencrypted backup."
+            exit 1
+          fi
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install age
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq age
+
+      - name: Choose retention tier
+        run: |
+          STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+          if [ "$(date -u +%d)" = "01" ]; then TIER=monthly; DAYS=90
+          elif [ "$(date -u +%u)" = "7" ]; then TIER=weekly; DAYS=28
+          else TIER=daily; DAYS=7; fi
+          echo "STAMP=${STAMP}" >> "$GITHUB_ENV"
+          echo "TIER=${TIER}" >> "$GITHUB_ENV"
+          echo "RETENTION_DAYS=${DAYS}" >> "$GITHUB_ENV"
+          echo "BASENAME=${DB_NAME}-${STAMP}-${TIER}" >> "$GITHUB_ENV"
+
+      - name: Export D1 (${{ env.DB_NAME }})
+        # Run outside the repo so wrangler resolves the database by name through the API
+        # instead of the placeholder database_id in wrangler.jsonc.
+        run: |
+          mkdir -p "$RUNNER_TEMP/export" && cd "$RUNNER_TEMP/export"
+          npx --yes wrangler@4 d1 export "${DB_NAME}" --remote --output "${BASENAME}.sql"
+          ls -l "${BASENAME}.sql"
+
+      - name: Restore drill (load into scratch SQLite and check integrity)
+        run: |
+          python3 scripts/backup_restore_check.py "$RUNNER_TEMP/export/${BASENAME}.sql" \
+            --json "$RUNNER_TEMP/export/${BASENAME}.restore-check.json"
+
+      - name: Compress, encrypt and checksum
+        run: |
+          cd "$RUNNER_TEMP/export"
+          mkdir -p out
+          gzip -9 -c "${BASENAME}.sql" | age -r "${BACKUP_AGE_RECIPIENT}" -o "out/${BASENAME}.sql.gz.age"
+          cp "${BASENAME}.restore-check.json" out/
+          (cd out && sha256sum * > "${BASENAME}.sha256")
+          shred -u "${BASENAME}.sql"
+          ls -l out
+
+      - name: Upload encrypted backup (${{ env.TIER }}, ${{ env.RETENTION_DAYS }} days)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.BASENAME }}
+          path: ${{ runner.temp }}/export/out/
+          retention-days: ${{ env.RETENTION_DAYS }}
+          if-no-files-found: error
+
+      - name: Copy to off-Cloudflare object storage (optional)
+        env:
+          S3_ENDPOINT: ${{ secrets.BACKUP_S3_ENDPOINT }}
+          S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+          RCLONE_CONFIG_OFFSITE_TYPE: s3
+          RCLONE_CONFIG_OFFSITE_PROVIDER: Other
+          RCLONE_CONFIG_OFFSITE_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_OFFSITE_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
+        run: |
+          if [ -z "${S3_ENDPOINT}" ] || [ -z "${S3_BUCKET}" ]; then
+            echo "No BACKUP_S3_* secrets; GitHub artifact is the only off-Cloudflare copy."
+            exit 0
+          fi
+          curl -fsSL https://rclone.org/install.sh | sudo bash >/dev/null
+          export RCLONE_CONFIG_OFFSITE_ENDPOINT="${S3_ENDPOINT}"
+          rclone copy "$RUNNER_TEMP/export/out/" "offsite:${S3_BUCKET}/d1/${DB_NAME}/${TIER}/" --s3-no-check-bucket

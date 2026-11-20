@@ -39,7 +39,14 @@
     "PUBLIC_DATA_URL": "https://data.basinmap.org",
     "ENVIRONMENT": "production",
     "ORCID_BASE_URL": "https://orcid.org",
-    "TURNSTILE_SITE_KEY": ""
+    "TURNSTILE_SITE_KEY": "",
+    "DATASET_LICENSE": "CC-BY 4.0",
+    "PUBLICATION_BASE_URL": "https://data.basinmap.org",
+    "GBIF_API_BASE": "https://api.gbif.org/v1",
+    "GBIF_DATASET_KEY": ""
+  },
+  "triggers": {
+    "crons": ["17 10 * * *"]
   },
   "env": {
     "development": {
@@ -47,7 +54,11 @@
         "PUBLIC_DATA_URL": "",
         "ENVIRONMENT": "development",
         "ORCID_BASE_URL": "https://sandbox.orcid.org",
-        "TURNSTILE_SITE_KEY": ""
+        "TURNSTILE_SITE_KEY": "",
+        "DATASET_LICENSE": "CC-BY 4.0",
+        "PUBLICATION_BASE_URL": "http://localhost:8787/api/r2",
+        "GBIF_API_BASE": "https://api.gbif-uat.org/v1",
+        "GBIF_DATASET_KEY": ""
       }
     },
     "staging": {
@@ -82,7 +93,14 @@
         "PUBLIC_DATA_URL": "/api/r2",
         "ENVIRONMENT": "staging",
         "ORCID_BASE_URL": "https://sandbox.orcid.org",
-        "TURNSTILE_SITE_KEY": "1x00000000000000000000AA"
+        "TURNSTILE_SITE_KEY": "1x00000000000000000000AA",
+        "DATASET_LICENSE": "CC-BY 4.0",
+        "PUBLICATION_BASE_URL": "https://staging.basinmap.org/api/r2",
+        "GBIF_API_BASE": "https://api.gbif-uat.org/v1",
+        "GBIF_DATASET_KEY": ""
+      },
+      "triggers": {
+        "crons": ["17 10 * * *"]
       }
     }
   }

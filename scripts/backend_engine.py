@@ -1026,19 +1026,29 @@ class BasinmapBackend:
             "overlay_record_count": len(overlay_res["features"]),
         }
 
+    def _live_snapshot_ids(self) -> set:
+        try:
+            manifest = json.loads((self.public_r2_dir / "releases" / "manifest.json").read_text(encoding="utf-8"))
+            rel = (manifest.get("layers") or {}).get("snapshot_own_occurrence_ids")
+            if not rel:
+                return set()
+            ids = json.loads((self.public_r2_dir / rel.lstrip("/")).read_text(encoding="utf-8"))
+            return {i for i in ids if isinstance(i, str)}
+        except (OSError, ValueError):
+            return set()
+
     def rebuild_approved_overlay(self) -> Dict[str, Any]:
         """Deterministically rebuild /overlays/approved.geojson via full D1/SQLite SELECT."""
         rows = self.conn.execute(
-            """
-            SELECT * FROM observations
-            WHERE review_status = 'approved'
-              AND publication_status != 'indexed_by_gbif'
-            ORDER BY occurrence_id ASC
-            """
+            "SELECT * FROM observations WHERE review_status = 'approved' ORDER BY occurrence_id ASC"
         ).fetchall()
+        # Hide a record only once the live map release contains it (mirrors src/worker/overlay.ts).
+        in_snapshot = self._live_snapshot_ids()
 
         features: List[Dict[str, Any]] = []
         for row in rows:
+            if row["occurrence_id"] in in_snapshot:
+                continue
             media_rows = self.conn.execute(
                 "SELECT media_id, public_r2_key FROM media_intake WHERE occurrence_id = ? AND derivative_status = 'public_sanitized' ORDER BY media_id ASC",
                 (row["occurrence_id"],),
@@ -1064,6 +1074,7 @@ class BasinmapBackend:
                         "identifiedByID": row["identified_by_id"],
                         "reviewStatus": row["review_status"],
                         "publicationStatus": row["publication_status"],
+                        "gbifOccurrenceKey": row["gbif_occurrence_key"],
                         "provisional": True,
                         "mediaUrls": [f"/{m['public_r2_key']}" for m in media_rows if m["public_r2_key"]],
                     },
