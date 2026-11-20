@@ -191,6 +191,7 @@ class TestPythonPublicationPipeline(unittest.TestCase):
         self.assertEqual([c for c in self.api.calls if c[0] == "POST"], [], "no validator upload or crawl request")
         eml = (self.r2 / "exports" / "eml.xml").read_text()
         self.assertEqual(eml.count("<positionName>Data Steward</positionName>"), 3)
+        self.assertEqual(eml.count("<surName>Murch</surName>"), 3)
 
     def test_dev_server_admin_endpoints(self) -> None:
         self.assertEqual(self.call("POST", "/api/admin/publication/run", self.reviewer, {})[0], 403)

@@ -243,15 +243,17 @@ export function buildEmlXml(
     <alternateIdentifier>${e(exportId)}</alternateIdentifier>
     <title xml:lang="eng">basinmap.org Community Hydrological Basin Biodiversity Observations</title>
     <creator>
+      <individualName><givenName>Ken</givenName><surName>Murch</surName></individualName>
       <organizationName>basinmap.org Open Web-GIS Project</organizationName>
       <positionName>Data Steward</positionName>
-      <electronicMailAddress>stewardship@basinmap.org</electronicMailAddress>
+      <electronicMailAddress>kenmurch@gmail.com</electronicMailAddress>
       <onlineUrl>https://basinmap.org</onlineUrl>
     </creator>
     <metadataProvider>
+      <individualName><givenName>Ken</givenName><surName>Murch</surName></individualName>
       <organizationName>basinmap.org Open Web-GIS Project</organizationName>
       <positionName>Data Steward</positionName>
-      <electronicMailAddress>stewardship@basinmap.org</electronicMailAddress>
+      <electronicMailAddress>kenmurch@gmail.com</electronicMailAddress>
       <onlineUrl>https://basinmap.org</onlineUrl>
     </metadataProvider>
     <pubDate>${e(pubDate)}</pubDate>
@@ -280,9 +282,10 @@ export function buildEmlXml(
       </temporalCoverage>
     </coverage>
     <contact>
+      <individualName><givenName>Ken</givenName><surName>Murch</surName></individualName>
       <organizationName>basinmap.org Data Stewardship</organizationName>
       <positionName>Data Steward</positionName>
-      <electronicMailAddress>stewardship@basinmap.org</electronicMailAddress>
+      <electronicMailAddress>kenmurch@gmail.com</electronicMailAddress>
       <onlineUrl>https://basinmap.org</onlineUrl>
     </contact>
   </dataset>
