@@ -100,7 +100,7 @@
         "GBIF_DATASET_KEY": ""
       },
       "triggers": {
-        "crons": ["17 10 * * *", "*/10 * * * *"]  // TEMP: every 10 min for Stage 6 verification; revert to the daily run only
+        "crons": ["17 10 * * *", "*/10 * * * *"]
       }
     }
   }
