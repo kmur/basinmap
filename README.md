@@ -142,6 +142,8 @@ The Worker publishes the community dataset on its own schedule. A cron trigger (
 
 Status changes never touch `observations.updated_at`, so Darwin Core `modified` only moves when a record really changes. Staging targets `api.gbif-uat.org`; production targets `api.gbif.org`.
 
+**One-time Cloudflare requirement.** Cron triggers need the account to have a `workers.dev` subdomain, even though this Worker keeps `"workers_dev": false`. Without one, `wrangler deploy` fails with `code: 10063`. To create it, open **Workers & Pages** in the Cloudflare dashboard once.
+
 Admins can trigger a run (`POST /api/admin/publication/run`, body `{"force": true}` to rebuild regardless of the hash). Reviewers and admins can read run history at `GET /api/admin/publication/status`.
 
 **Secrets** (drop `--env staging` for production). Use a dedicated GBIF account for the bot, not a personal one:
