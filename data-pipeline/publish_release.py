@@ -383,8 +383,12 @@ def start_range_test_server(bucket_root: Path) -> Tuple[_ReusableThreadingHTTPSe
     return server, f"http://{host}:{port}", thread
 
 
+HTTP_USER_AGENT = "basinmap-publish-verifier/1.0 (+https://basinmap.org)"
+
+
 def _http_request(url: str, method: str = "GET", headers: Optional[Dict[str, str]] = None) -> Tuple[int, Dict[str, str], bytes]:
-    req = urllib.request.Request(url, method=method, headers=headers or {})
+    # Cloudflare bot rules on data.basinmap.org refuse Python's default "Python-urllib" identity.
+    req = urllib.request.Request(url, method=method, headers={"User-Agent": HTTP_USER_AGENT, **(headers or {})})
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({})) if url.startswith("http://127.0.0.1") else urllib.request.build_opener()
     try:
         with opener.open(req, timeout=15) as resp:
