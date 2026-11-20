@@ -10,6 +10,15 @@ Open-source Web-GIS application and community biodiversity observation publishin
 
 ---
 
+## Public Data Policy (GBIF & HydroSHEDS)
+
+`basinmap.org` is an independent open-source project built exclusively on **public scientific datasets** (no proprietary or external association databases):
+
+- **Biodiversity & Taxonomy (GBIF Preferred):** Species checklists, accepted names, synonyms, IUCN Red List categories, and scoped occurrence records are sourced directly from the **GBIF Backbone Taxonomy** and **GBIF Occurrence Downloads** (with preserved download DOIs, query JSON, and SHA-256 checksums).
+- **Hydrological Boundaries & Environment:** Watershed polygons, monthly climate averages, and sub-basin habitat attributes are sourced directly from public **HydroSHEDS / HydroBASINS v1c** and **BasinATLAS v1.0** releases under their original CC BY 4.0 and ODbL 1.0 licenses.
+
+---
+
 ## Architecture Overview
 
 `basinmap.org` separates read-heavy spatial delivery from transactional observation workflows to keep infrastructure open, portable, and low cost:
@@ -149,3 +158,7 @@ GitHub Actions ([.github/workflows/deploy.yml](.github/workflows/deploy.yml)) au
 | **Stage 4** | Code complete; live `v0.2.0` pending | `ingest_gbif_download.py` (real GBIF DOI download + HydroBASINS), `< 500 MB` partitioning, WebP raster PMTiles, `benchmark_range_pilot.py`; operator steps in [data-pipeline/README.md](data-pipeline/README.md#stage-4-real-gbif--hydrobasins-pilot-release-v020) |
 | **Stage 5** | Code complete; secrets pending | ORCID OAuth + D1 sessions, Turnstile, submission drawer with map picking & photo upload progress, My submissions, reviewer queue with EXIF GPS checks (see [Accounts & spam protection](#accounts--spam-protection-stage-5)) |
 | **Stage 6** | Planned | In-Worker / scheduled DwC-A `.zip` generation, live GBIF Data Validator + `gbif-uat.org` registration, quiet-hours D1 backups |
+| **Stage 7** | Planned | Public GBIF *Cyprinodontiformes* (Killifish) Backbone Taxonomy, IUCN status & GBIF Occurrence Download pipeline |
+| **Stage 8** | Planned | Public HydroBASINS v1c (L3/L6/L8) & BasinATLAS v1.0 climate/habitat ingestion + spatial join into `< 500 MB` PMTiles & shards |
+| **Stage 9** | Planned | Real OSM/satellite basemaps, genus/synonym/date search, color-coded lettered Species Key & grouped-species tooltips |
+| **Stage 10** | Planned | Zoom-adaptive L3→L6→L8 basins, Basin Report (climate seasonality + habitat metrics), Country Browser & static PNG/PDF map export |

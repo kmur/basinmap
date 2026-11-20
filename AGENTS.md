@@ -48,7 +48,12 @@ Stages 1–3 are implemented, tested, and deployed live on Cloudflare (`main` ->
    - Turnstile fails **closed** outside development (no `TURNSTILE_SECRET` → 503). Idempotent replays are answered **before** Turnstile, and only to the submitting account (otherwise 409).
    - `recordedByID` comes only from the authenticated user's ORCID iD URI; reviewer re-identification sets `identifiedBy`/`identifiedByID`. Never accept these from the request body.
    - Submissions require `licenseAccepted: true` (stored as `license_accepted_at`). UI copy must never imply GBIF indexing on submission; show `review_status` and `publication_status` separately.
-5. **Dual Runtime & CI Compatibility:**
+5. **Independent Project & Public Data Sourcing Only (GBIF Preferred):**
+   - `basinmap.org` is a standalone, independent open-source project.
+   - **Never** copy, import, or bundle external association species databases, KMI locality catalogues, or third-party plugin data/assets.
+   - **Never** reference `AKA`, `American Killifish Association`, `KMI`, `JAKA`, or `BNL` in filenames, code identifiers, schemas, comments, data files, or UI labels.
+   - Source all species checklists, taxonomic synonyms, IUCN categories, and occurrence records strictly from **public scientific datasets — primarily the GBIF Backbone Taxonomy API (`/v1/species`) and GBIF Occurrence Downloads (`/v1/occurrence/download`)** — paired with public **HydroSHEDS / HydroBASINS / BasinATLAS** watershed and environmental datasets.
+6. **Dual Runtime & CI Compatibility:**
    - Keep `src/frontend/*.ts` valid under **both** `npx tsc --noEmit` (run in GitHub Actions) and `python3 scripts/build_dist.py` (which strips TS syntax to ES2022 modules in `./dist` and checks syntax via JavaScriptCore `jsc -m` when on macOS).
    - Keep `src/worker/index.ts` and `scripts/backend_engine.py` behavior synchronized when adding or modifying API endpoints (same JSON shapes via `serializeObservation` / `_row_to_public_dict`), and cover Worker changes in `tests/worker_harness.test.mts`.
    - Worker modules import siblings with explicit `.ts` extensions and use `import type` for interfaces (required for Node type stripping in the harness; esbuild/wrangler accept both).
@@ -89,3 +94,11 @@ Always develop and test on the `staging` branch first (`https://staging.basinmap
   Remaining: register ORCID sandbox (staging) and production clients, set the Worker secrets listed in README.md, promote reviewer accounts, verify sign-in → submit → review on `https://staging.basinmap.org`, then merge to `main`. Non-JPEG photos stay private on approval until an Images binding (`IMAGES`) is configured.
 - **Stage 6 — Automated DwC-A Publishing, GBIF Validation & Off-Provider Backups:**
   Wire DwC-A `.zip` generation into the Worker (or scheduled GitHub Action) writing `/exports/dwca-latest.zip`, validate live against `https://api.gbif.org/v1/validation` and `https://api.gbif-uat.org/v1/dataset`, reconcile GBIF-indexed `occurrenceID`s back into D1 (`publication_status = 'indexed_by_gbif'`), and add a quiet-hours scheduled GitHub Action running `wrangler d1 export` + encrypted off-Cloudflare backup retention.
+- **Stage 7 — Public GBIF *Cyprinodontiformes* (Killifish) Taxonomy, IUCN & Occurrence Pipeline:**
+  Build an independent ingestion pipeline querying the public **GBIF Backbone Taxonomy** (`orderKey` for *Cyprinodontiformes*), **GBIF Occurrence Download API** (real DOI + provenance), and public IUCN/FishBase taxonomic metadata from GBIF/public APIs (no external association databases or KMI files), emitting a clean `species_index.json`, `taxonomy_aliases.json`, and `occurrences.pmtiles`.
+- **Stage 8 — Public HydroSHEDS / HydroBASINS Level 3/6/8 & BasinATLAS Environment Pipeline:**
+  Ingest authoritative public **HydroBASINS v1c** and **BasinATLAS v1.0** datasets directly from HydroSHEDS (`hydrosheds.org` / Figshare DOIs), preserving proper attribution (`CC BY 4.0` for BasinATLAS/WorldClim/EarthEnv/GLC2000/Human Footprint and `ODbL 1.0` for SoilGrids1km), and spatially join GBIF *Cyprinodontiformes* records into `< 500 MB` Level 3/6/8 `.pmtiles` + pre-aggregated basin shards.
+- **Stage 9 — Real Basemaps, Genus/Synonym Search & Lettered Species Key:**
+  Add OpenStreetMap street + optional satellite/terrain backgrounds in MapLibre GL JS, scale bar, fit-to-results and fullscreen controls, family/genus/species/GBIF-synonym search, and deterministic color-coded/lettered species markers with an interactive Species Key and grouped-species tooltips.
+- **Stage 10 — Interactive Basin Report, Monthly Climate/Habitat Charts, Country Browser & Static Export:**
+  Add zoom-adaptive HydroBASINS Level 3 → 6 → 8 display toggles, a Basin Report drawer (species checklist, 12-month BasinATLAS air temperature/precipitation seasonality chart with clear whole-basin methodological notes, and 5 habitat indicators), a public country/continent GBIF fauna browser, and a printable PNG/PDF map export modal.
