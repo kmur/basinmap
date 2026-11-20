@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Dict, List, Set, Tuple
 
@@ -254,6 +255,10 @@ def _strip_param_list_types(params_raw: str) -> str:
             out.append(params_raw[i:nxt])
             i = nxt
             continue
+        if ch == "?" and params_raw[i + 1 : i + 2] == ":":
+            # Optional parameter marker (`name?: T`); the type is stripped on the next pass.
+            i += 1
+            continue
         if ch == ":":
             end = _consume_type_expr(params_raw, i + 1, {",", "="})
             i = end
@@ -447,8 +452,17 @@ def compile_ts_module(src: str, known_types: Set[str]) -> str:
 
 
 def verify_js_module(js_path: Path) -> None:
+    """Syntax-check an emitted ES module with JavaScriptCore (macOS) and/or Node.js when available."""
     if JSC_BIN.exists():
         subprocess.run([str(JSC_BIN), "-m", str(js_path)], check=True)
+    node = shutil.which("node")
+    if node:
+        with tempfile.TemporaryDirectory() as tmp:
+            probe = Path(tmp) / (js_path.stem + ".mjs")
+            probe.write_text(js_path.read_text(encoding="utf-8"), encoding="utf-8")
+            result = subprocess.run([node, "--check", str(probe)], capture_output=True, text=True)
+            if result.returncode != 0:
+                raise RuntimeError(f"Emitted {js_path.name} is not valid JavaScript:\n{result.stderr}")
 
 
 def build_dist() -> Dict[str, Path]:
