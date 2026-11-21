@@ -1,0 +1,44 @@
+{
+  "description": "Stage 7: Cyprinodontiformes (killifishes, livebearers, pupfishes; GBIF Backbone order key 547), worldwide. Georeferenced, present records without geospatial issues; excludes fossils and living specimens (aquarium/zoo stock) but keeps historical museum specimens (no year filter). Occurrence-search count on 2026-11-20 with hasCoordinate=true and hasGeospatialIssue=false: 693,511.",
+  "request": {
+    "format": "SIMPLE_CSV",
+    "predicate": {
+      "type": "and",
+      "predicates": [
+        {
+          "type": "equals",
+          "key": "TAXON_KEY",
+          "value": "547"
+        },
+        {
+          "type": "equals",
+          "key": "HAS_COORDINATE",
+          "value": "true"
+        },
+        {
+          "type": "equals",
+          "key": "HAS_GEOSPATIAL_ISSUE",
+          "value": "false"
+        },
+        {
+          "type": "equals",
+          "key": "OCCURRENCE_STATUS",
+          "value": "PRESENT"
+        },
+        {
+          "type": "in",
+          "key": "BASIS_OF_RECORD",
+          "values": [
+            "HUMAN_OBSERVATION",
+            "MACHINE_OBSERVATION",
+            "OBSERVATION",
+            "OCCURRENCE",
+            "PRESERVED_SPECIMEN",
+            "MATERIAL_SAMPLE",
+            "MATERIAL_CITATION"
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -97,6 +97,40 @@ python3 data-pipeline/benchmark_range_pilot.py --base-url https://staging.basinm
 
 For scopes above about 2 M records, or continental/global builds: run the join in DuckDB Spatial (or GDAL/PostGIS), emit GeoJSONSeq to `tippecanoe` with `--maximum-tile-bytes` and per-zoom-tier output files, and check each `.pmtiles` is below 500 MB. Then write the same `release_manifest.json` schema (`layers.*.partitions`) so that `publish_release.py`, `benchmark_range_pilot.py`, and the frontend work unchanged.
 
+## Stage 7: Global Cyprinodontiformes Release (`v0.3.0`)
+
+Killifishes, livebearers and pupfishes worldwide: GBIF Backbone order **547**, about 1,530 accepted
+species and ~694k clean georeferenced records (2026-11-20), so one GBIF download (one DOI) covers it.
+
+What is new in the pipeline:
+
+* `queries/cyprinodontiformes_global.json`: order 547, present, clean coordinates; no fossils or
+  living (aquarium) specimens; no year filter, so historical museum specimens are kept.
+* `taxonomy.py fetch --taxon-key 547`: pages the GBIF Backbone (`/species/search`) into
+  `checklist.json` (accepted species with family/genus/authorship/English names, plus species synonyms).
+* `ingest_gbif_download.py build` now accepts several `--hydrobasins` files of one level (all nine
+  regions for a global taxon), `--keep-unassigned` (records off every basin polygon such as coasts and
+  estuaries stay in the occurrence tiles with an empty `hybas_id`), and `--checklist`, which adds:
+  * `species_index.json`: one row per species (key, name, authorship, family, genus, English names,
+    IUCN category, occurrence/basin counts, first/last year). Species seen in the download but not
+    in the checklist are kept with `"in_checklist": false`.
+  * `taxonomy_aliases.json`: normalised name -> accepted species key (accepted names, then synonyms,
+    then English names; spellings that point at two species are listed under `ambiguous` instead).
+  Both are referenced from the manifest as `layers.species_index` and `layers.taxonomy_aliases`.
+
+### Building it: GitHub Actions (no local commands)
+
+`.github/workflows/build-release.yml` runs count, request, fetch, HydroBASINS, checklist, build,
+publish and verify in the cloud. One-time setup: add the repository secrets `GBIF_USER` and
+`GBIF_PWD`. Then **Actions -> Build data release -> Run workflow** (defaults: `v0.3.0`, this query,
+taxon 547, HydroBASINS level 6 for all regions, basin tiles to zoom 7, target `staging`).
+
+* The release is also kept as a 7-day workflow artifact; untick **publish** to inspect it first.
+* Releases are immutable: the job refuses a version already in the bucket.
+* `download_key` reuses a finished GBIF download (same DOI) instead of requesting a new one.
+* Archives are capped at 290 MB so `wrangler r2 object put` can upload them.
+* Run with target `production` only after checking the staging result.
+
 ## Benchmark: `benchmark_range_pilot.py`
 
 This script replays the data-origin requests a MapLibre + pmtiles.js browser makes for one visit. The visit follows the same steps as `src/frontend/app.ts`:

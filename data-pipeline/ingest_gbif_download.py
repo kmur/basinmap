@@ -43,7 +43,7 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Optional, Sequence, Tuple, Union
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
@@ -62,6 +62,7 @@ from hydrobasins import (  # noqa: E402
     simplify_geometry,
 )
 from pmtiles_writer import TILE_TYPE_WEBP  # noqa: E402
+from taxonomy import build_species_outputs  # noqa: E402
 from release_tiling import (  # noqa: E402
     BASIN_SCALAR_FIELDS,
     CDN_CACHE_CEILING_BYTES,
@@ -526,7 +527,7 @@ def _tile_layer_metadata(name: str, description: str, attribution: str, layer_id
 
 def build_release_from_download(
     gbif_dir: Path,
-    hydrobasins_path: Path,
+    hydrobasins_path: Union[Path, Sequence[Path]],
     version: str,
     output_root: Path,
     *,
@@ -546,7 +547,20 @@ def build_release_from_download(
     raster_name: str = "hillshade",
     raster_attribution: str = "",
     force: bool = False,
+    keep_unassigned: bool = False,
+    checklist_path: Optional[Path] = None,
 ) -> Dict[str, Any]:
+    """Build an immutable release directory from a fetched GBIF download.
+
+    ``hydrobasins_path`` may list several regional files of one level (e.g. all nine regions for a
+    global taxon). With ``keep_unassigned`` records outside every basin polygon (coasts, estuaries,
+    small islands) stay in the occurrence tiles with an empty ``hybas_id`` instead of being dropped.
+    ``checklist_path`` (from ``taxonomy.py fetch``) adds ``species_index.json`` and
+    ``taxonomy_aliases.json`` to the release.
+    """
+    hydrobasins_paths = [Path(hydrobasins_path)] if isinstance(hydrobasins_path, (str, Path)) else [Path(x) for x in hydrobasins_path]
+    if not hydrobasins_paths:
+        raise ValueError("At least one HydroBASINS file is required")
     if not re.fullmatch(r"v[0-9A-Za-z.\-]+", version):
         raise ValueError(f"Invalid release version name: {version!r}")
     meta_path = gbif_dir / "download_metadata.json"
@@ -563,10 +577,13 @@ def build_release_from_download(
             if (gbif_dir / name).exists() and sha256_file(gbif_dir / name) != digest:
                 raise ValueError(f"SHA-256 mismatch for {gbif_dir / name} (source changed since fetch)")
 
-    level = _infer_level(hydrobasins_path, basin_level)
+    level = _infer_level(hydrobasins_paths[0], basin_level)
+    for extra in hydrobasins_paths[1:]:
+        if _infer_level(extra, basin_level) != level:
+            raise ValueError(f"{extra.name} is not HydroBASINS level {level}; all regions must share one level")
     query_request = public_request(meta.get("request", {}))
     scope_bbox = list(bbox) if bbox else predicate_bbox(query_request.get("predicate", {}))
-    all_basins = load_hydrobasins(hydrobasins_path)
+    all_basins = [f for hb_path in hydrobasins_paths for f in load_hydrobasins(hb_path)]
     basins = filter_basins(all_basins, bbox=scope_bbox, pfaf_prefixes=pfaf_prefixes)
     if not basins:
         raise ValueError("No HydroBASINS polygons intersect the requested scope")
@@ -594,6 +611,7 @@ def build_release_from_download(
     licenses: Dict[str, int] = defaultdict(int)
     own_ids: List[str] = []
     has_iucn_column = False
+    species_totals: Dict[int, Dict[str, Any]] = {}
 
     for raw in iter_download_rows(zip_path):
         total_rows += 1
@@ -604,26 +622,50 @@ def build_release_from_download(
         if rec["iucnRedListCategory"]:
             has_iucn_column = True
         bidx = index.lookup(rec["lon"], rec["lat"])
+        sk = rec["speciesKey"]
         if bidx is None:
             unassigned += 1
+            if not keep_unassigned:
+                continue
+        hybas_id = basins[bidx]["properties"]["hybas_id"] if bidx is not None else ""
+        yr = rec["year"]
+        if sk and rec["species"]:
+            tot = species_totals.get(sk)
+            if tot is None:
+                tot = species_totals[sk] = {"count": 0, "name": rec["species"], "family": rec["family"],
+                                            "firstYear": None, "lastYear": None, "basins": set(),
+                                            "iucn": rec["iucnRedListCategory"]}
+            tot["count"] += 1
+            if hybas_id:
+                tot["basins"].add(hybas_id)
+            if yr:
+                tot["firstYear"] = yr if not tot["firstYear"] else min(tot["firstYear"], yr)
+                tot["lastYear"] = yr if not tot["lastYear"] else max(tot["lastYear"], yr)
+        licenses[rec["license"]] += 1
+        dataset_keys.add(rec["datasetKey"])
+        if sk and rec["species"]:
+            species_keys.add(sk)
+        if own_dataset_key and rec["datasetKey"] == own_dataset_key and rec["occurrenceID"]:
+            own_ids.append(rec["occurrenceID"])
+        points.append((rec["lon"], rec["lat"], {
+            "occurrenceID": rec["occurrenceID"], "gbifID": rec["gbifID"], "scientificName": rec["scientificName"],
+            "taxonKey": rec["taxonKey"], "eventDate": rec["eventDate"], "year": yr or 0,
+            "basisOfRecord": rec["basisOfRecord"], "hybas_id": hybas_id, "license": rec["license"],
+            "institutionCode": rec["institutionCode"],
+        }))
+        if bidx is None:
             continue
-        hybas_id = basins[bidx]["properties"]["hybas_id"]
         a = agg.setdefault(bidx, {"n": 0, "species": {}, "years": defaultdict(int), "basis": defaultdict(int),
                                   "datasets": defaultdict(int), "iucn_records": defaultdict(int),
                                   "no_species": 0, "min_year": None, "max_year": None})
         a["n"] += 1
-        yr = rec["year"]
         if yr:
             a["years"][str(yr)] += 1
             a["min_year"] = yr if a["min_year"] is None else min(a["min_year"], yr)
             a["max_year"] = yr if a["max_year"] is None else max(a["max_year"], yr)
         a["basis"][rec["basisOfRecord"]] += 1
         a["datasets"][(rec["datasetKey"], rec["datasetName"], rec["license"])] += 1
-        licenses[rec["license"]] += 1
-        dataset_keys.add(rec["datasetKey"])
-        sk = rec["speciesKey"]
         if sk and rec["species"]:
-            species_keys.add(sk)
             sp = a["species"].get(sk)
             if sp is None:
                 sp = a["species"][sk] = {"scientificName": rec["species"], "taxonKey": sk, "family": rec["family"],
@@ -635,18 +677,11 @@ def build_release_from_download(
                 sp["lastYear"] = yr if not sp["lastYear"] else max(sp["lastYear"], yr)
         else:
             a["no_species"] += 1
-        if own_dataset_key and rec["datasetKey"] == own_dataset_key and rec["occurrenceID"]:
-            own_ids.append(rec["occurrenceID"])
-        points.append((rec["lon"], rec["lat"], {
-            "occurrenceID": rec["occurrenceID"], "gbifID": rec["gbifID"], "scientificName": rec["scientificName"],
-            "taxonKey": rec["taxonKey"], "eventDate": rec["eventDate"], "year": yr or 0,
-            "basisOfRecord": rec["basisOfRecord"], "hybas_id": hybas_id, "license": rec["license"],
-            "institutionCode": rec["institutionCode"],
-        }))
 
     if not points:
         raise ValueError("No GBIF records fell inside the selected HydroBASINS polygons")
-    log(f"joined {len(points):,} records ({unassigned:,} outside basins, {skipped:,} without valid coordinates)")
+    kept = "kept in occurrence tiles" if keep_unassigned else "dropped"
+    log(f"{len(points):,} records ({unassigned:,} outside basins, {kept}; {skipped:,} without valid coordinates)")
 
     # --- Enrichment -------------------------------------------------------------------------
     if has_iucn_column:
@@ -659,6 +694,26 @@ def build_release_from_download(
     else:
         iucn_source = "unavailable (run build without --no-enrich to populate threatened_count)"
         iucn_map, titles = {}, {}
+
+    # --- Species index & taxonomy aliases (Stage 7) -----------------------------------------
+    species_index_path = taxonomy_aliases_path = None
+    species_index_counts: Dict[str, Any] = {}
+    checklist: Optional[Dict[str, Any]] = None
+    if checklist_path is not None:
+        checklist = json.loads(Path(checklist_path).read_text(encoding="utf-8"))
+        merged_iucn = {str(k): v for k, v in iucn_map.items()}
+        for sk, tot in species_totals.items():
+            if tot["iucn"] and not merged_iucn.get(str(sk)):
+                merged_iucn[str(sk)] = tot["iucn"]
+        outputs = build_species_outputs(checklist, species_totals, merged_iucn, THREATENED_IUCN)
+        (staging_dir / "species_index.json").write_text(
+            json.dumps(outputs["species_index"], separators=(",", ":"), ensure_ascii=False) + "\n", "utf-8")
+        (staging_dir / "taxonomy_aliases.json").write_text(
+            json.dumps(outputs["taxonomy_aliases"], separators=(",", ":"), ensure_ascii=False) + "\n", "utf-8")
+        species_index_path = f"/releases/{version}/species_index.json"
+        taxonomy_aliases_path = f"/releases/{version}/taxonomy_aliases.json"
+        species_index_counts = outputs["species_index"]["counts"]
+        log(f"species index: {species_index_counts}")
 
     # --- Basin features & shards ------------------------------------------------------------
     use_sqlite = shard_format == "sqlite" or (shard_format == "auto" and (level >= 7 or len(basins) > MAX_JSON_SHARDS))
@@ -797,7 +852,9 @@ def build_release_from_download(
     all_lon = [b for f in basin_features for b in geometry_bbox(f["geometry"])[0::2]]
     all_lat = [b for f in basin_features for b in geometry_bbox(f["geometry"])[1::2]]
     cov_bbox = [round(min(all_lon), 5), round(min(all_lat), 5), round(max(all_lon), 5), round(max(all_lat), 5)]
-    hb_sources = {hydrobasins_path.name: {"sha256": sha256_file(hydrobasins_path), "bytes": hydrobasins_path.stat().st_size}}
+    hb_sources = {hb.name: {"sha256": sha256_file(hb), "bytes": hb.stat().st_size} for hb in hydrobasins_paths}
+    if checklist_path is not None:
+        hb_sources["checklist.json"] = {"sha256": sha256_file(Path(checklist_path)), "bytes": Path(checklist_path).stat().st_size}
     sources = {
         zip_path.name: {"sha256": sha256_file(zip_path), "bytes": zip_path.stat().st_size},
         "download_metadata.json": {"sha256": sha256_file(meta_path), "bytes": meta_path.stat().st_size},
@@ -835,10 +892,14 @@ def build_release_from_download(
             "gbif_license": meta.get("license"),
             "gbif_query": query_request,
             "citations": [{"citation": citation, "doi": meta["doi"]}],
-            "hydrobasins": {"version": "v1c", "level": level, "file": hydrobasins_path.name,
+            "hydrobasins": {"version": "v1c", "level": level, "file": hydrobasins_paths[0].name,
+                            "files": [hb.name for hb in hydrobasins_paths],
                             "scope_bbox": scope_bbox, "pfaf_prefixes": list(pfaf_prefixes or []),
                             "citation": HYDROBASINS_CITATION},
             "iucn_source": iucn_source,
+            **({"taxonomy": {"source": checklist.get("source"), "taxon": checklist.get("taxon"),
+                             "fetched_at": checklist.get("fetched_at"),
+                             "source_dataset_key": checklist.get("source_dataset_key")}} if checklist else {}),
             "sources": sources,
         },
         "spatial_coverage": {"crs": "EPSG:4326", "bbox": cov_bbox,
@@ -850,7 +911,11 @@ def build_release_from_download(
             "download_rows": total_rows,
             "unassigned_occurrences": unassigned,
             "invalid_coordinates": skipped,
-            "threatened_species": len(threatened_species_total),
+            "threatened_species": len({*threatened_species_total,
+                                       *(k for k, v in species_totals.items()
+                                         if (iucn_map.get(str(k)) or v["iucn"]) in THREATENED_IUCN)}),
+            "unassigned_kept": unassigned if keep_unassigned else 0,
+            **({"checklist_species": species_index_counts.get("species", 0)} if species_index_counts else {}),
         },
         "field_definitions": {
             "occurrence_count": "GBIF records whose coordinates fall inside the basin polygon",
@@ -873,6 +938,8 @@ def build_release_from_download(
             "basin_shards": shard_refs,
             **({"rasters": rasters} if rasters else {}),
             **({"snapshot_own_occurrence_ids": own_ids_path} if own_ids_path else {}),
+            **({"species_index": species_index_path, "taxonomy_aliases": taxonomy_aliases_path}
+               if species_index_path else {}),
         },
         "overlays": {"approved_observations": {"format": "geojson", "path": "/overlays/approved.geojson",
                                                "cache_control": MUTABLE_CACHE_CONTROL}},
@@ -939,7 +1006,8 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     s.add_argument("--poll-seconds", type=float, default=60.0)
 
     s = sub.add_parser("fetch-hydrobasins", help="Download a HydroBASINS v1c region/level zip")
-    s.add_argument("--region", default="na", choices=HYDROBASINS_REGIONS)
+    s.add_argument("--region", default="na", choices=(*HYDROBASINS_REGIONS, "all"),
+                   help="HydroBASINS region, or 'all' for the nine regions (global taxa)")
     s.add_argument("--level", type=int, default=6)
 
     for name in ("build", "run"):
@@ -949,9 +1017,13 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
         else:
             s.add_argument("--query", type=Path, default=SCRIPT_DIR / "queries" / "pilot_willamette.json")
             s.add_argument("--max-records", type=int, default=DEFAULT_MAX_RECORDS)
-            s.add_argument("--region", default="na", choices=HYDROBASINS_REGIONS)
-        s.add_argument("--hydrobasins", type=Path, required=(name == "build"),
-                       help="HydroSHEDS hybas_*_levNN_v1c.zip, .shp, or GeoJSON")
+            s.add_argument("--region", default="na", choices=(*HYDROBASINS_REGIONS, "all"))
+        s.add_argument("--hydrobasins", type=Path, nargs="+", required=(name == "build"),
+                       help="HydroSHEDS hybas_*_levNN_v1c.zip, .shp, or GeoJSON (several regions allowed)")
+        s.add_argument("--keep-unassigned", action="store_true",
+                       help="Keep records outside every basin in the occurrence tiles (global taxa, coasts)")
+        s.add_argument("--checklist", type=Path, default=None,
+                       help="checklist.json from taxonomy.py fetch: adds species_index.json + taxonomy_aliases.json")
         s.add_argument("--level", type=int, default=None)
         s.add_argument("--version", default="v0.2.0")
         s.add_argument("--previous-version", default=None,
@@ -974,7 +1046,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     return p.parse_args(argv)
 
 
-def _build_from_args(args: argparse.Namespace, gbif_dir: Path, hydrobasins: Path) -> Dict[str, Any]:
+def _build_from_args(args: argparse.Namespace, gbif_dir: Path, hydrobasins: Sequence[Path]) -> Dict[str, Any]:
     client = None if args.no_enrich else client_from_env(args.api_base)
     max_bytes = int(args.max_archive_mb * 1e6)
     if max_bytes > MAX_ARCHIVE_BYTES:
@@ -987,6 +1059,7 @@ def _build_from_args(args: argparse.Namespace, gbif_dir: Path, hydrobasins: Path
         occurrence_zooms=tuple(args.occurrence_zooms), max_points_per_tile=args.max_points_per_tile,
         shard_format=args.shard_format, raster_tiles_dir=args.raster_tiles_dir, raster_name=args.raster_name,
         raster_attribution=args.raster_attribution, force=args.force,
+        keep_unassigned=args.keep_unassigned, checklist_path=args.checklist,
     )
 
 
@@ -1013,14 +1086,17 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         print(json.loads((out / "provenance.json").read_text())["citation"])
         print(out)
     elif args.command == "fetch-hydrobasins":
-        print(fetch_hydrobasins(client, args.region, args.level, args.workdir))
+        regions = HYDROBASINS_REGIONS if args.region == "all" else (args.region,)
+        for region in regions:
+            print(fetch_hydrobasins(client, region, args.level, args.workdir))
     elif args.command == "build":
         print(json.dumps(_summary(_build_from_args(args, args.gbif_dir, args.hydrobasins)), indent=2))
     elif args.command == "run":
         res = request_download(client, load_query(args.query), args.max_records, args.force)
         log(f"submitted GBIF download {res['key']} (expected ~{res['expected_records']} records)")
         gbif_dir = fetch_download(client, res["key"], args.workdir)
-        hb = args.hydrobasins or fetch_hydrobasins(client, args.region, args.level or 6, args.workdir)
+        regions = HYDROBASINS_REGIONS if args.region == "all" else (args.region,)
+        hb = args.hydrobasins or [fetch_hydrobasins(client, r, args.level or 6, args.workdir) for r in regions]
         print(json.dumps(_summary(_build_from_args(args, gbif_dir, hb)), indent=2))
     return 0
 
