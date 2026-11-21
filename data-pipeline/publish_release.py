@@ -856,7 +856,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if args.command == "make-root":
         live = None
         if args.live_manifest and args.live_manifest.exists():
-            live = json.loads(args.live_manifest.read_text(encoding="utf-8"))
+            try:
+                live = json.loads(args.live_manifest.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                live = None  # missing object downloaded as an empty file: treat as a new dataset
         root = make_root_manifest(json.loads(args.release_manifest.read_text(encoding="utf-8")), live, args.version)
         args.out.write_text(json.dumps(root, indent=2) + "\n", encoding="utf-8")
         print(json.dumps({"current_version": root["current_version"], "previous_version": root.get("previous_version"),

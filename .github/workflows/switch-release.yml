@@ -82,7 +82,17 @@ jobs:
           fi
           npx wrangler r2 object get "${BUCKET}/${KEY}" --remote --file /tmp/switch/live.json >/dev/null 2>&1 || true
           npx wrangler r2 object get "${BUCKET}/releases/datasets.json" --remote --file /tmp/switch/datasets.json >/dev/null 2>&1 || true
-          [ -f /tmp/switch/live.json ] && python3 -c 'import json;print("live now:", json.load(open("/tmp/switch/live.json"))["current_version"])'
+          # wrangler can leave an empty or non-JSON file when the object does not exist yet (a new dataset)
+          for f in /tmp/switch/live.json /tmp/switch/datasets.json; do
+            if [ -f "$f" ] && ! python3 -c 'import json,sys;json.load(open(sys.argv[1]))' "$f" 2>/dev/null; then
+              echo "$(basename "$f"): not found yet, starting fresh"; rm -f "$f"
+            fi
+          done
+          if [ -f /tmp/switch/live.json ]; then
+            python3 -c 'import json;print("live now:", json.load(open("/tmp/switch/live.json")).get("current_version"))'
+          else
+            echo "dataset '${DATASET:-default}' is new"
+          fi
 
       - name: Write and upload the new manifest and dataset catalog
         env:
