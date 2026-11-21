@@ -1316,6 +1316,10 @@ function initMapLibreIfAvailable(): boolean {
       state.levelLayers[levelKey].fill.forEach((layerId: string) => {
         map.on("click", layerId, (e: any) => {
           if (consumed(e)) return;
+          // A click on a record dot or bin belongs to that dot, not to the basin underneath.
+          const pointLayers = [...ids.occurrences, ...ids.bins, ...ids.speciesBins, "approved-circle"]
+            .filter((id) => map.getLayer(id) && map.getLayoutProperty(id, "visibility") !== "none");
+          if (pointLayers.length && map.queryRenderedFeatures(e.point, { layers: pointLayers }).length) return;
           const feature = e.features && e.features[0];
           if (feature && feature.properties) {
             loadAndRenderBasinShard(feature.properties as BasinScalarProperties, levelKey);
