@@ -243,6 +243,26 @@ def upload_plan_s3(plan: List[Dict[str, Any]], bucket: str, client: Any, jobs: i
     print(f"[publish] switched {last['key']}", flush=True)
 
 
+def make_root_manifest(release_manifest: Dict[str, Any], live_manifest: Optional[Dict[str, Any]],
+                       version: str) -> Dict[str, Any]:
+    """Root ``releases/manifest.json`` that makes an already-published release live again.
+
+    Mirrors the builder: a copy of the release's own manifest with only one sample basin shard
+    (the root manifest is fetched on every visit), and ``previous_version`` set to whatever was live
+    so the switch itself can be undone.
+    """
+    if release_manifest.get("current_version") != version:
+        raise ValueError(f"release_manifest.json is for {release_manifest.get('current_version')!r}, not {version!r}")
+    root = json.loads(json.dumps(release_manifest))
+    shards = root.get("layers", {}).get("basin_shards")
+    if isinstance(shards, list):
+        root["layers"]["basin_shards"] = shards[:1]
+    live = (live_manifest or {}).get("current_version")
+    if live and live != version:
+        root["previous_version"] = live
+    return root
+
+
 def publish_release(
     root: Path,
     version: Optional[str],
@@ -742,6 +762,12 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     p_pub.add_argument("--jobs", type=int, default=1, help="Parallel uploads (manifest.json is always last)")
     p_pub.add_argument("--retries", type=int, default=4, help="Retries per object on transient failures")
 
+    p_root = subparsers.add_parser("make-root", help="Write a root manifest.json that switches the live release")
+    p_root.add_argument("--release-manifest", type=Path, required=True, help="releases/<version>/release_manifest.json")
+    p_root.add_argument("--live-manifest", type=Path, default=None, help="current releases/manifest.json (optional)")
+    p_root.add_argument("--version", required=True)
+    p_root.add_argument("--out", type=Path, required=True)
+
     p_ver = subparsers.add_parser("verify-http", help="Verify 206 byte-range, ETag, Cache-Control, and CORS")
     p_ver.add_argument("--root", type=Path, default=SCRIPT_DIR.parent / "public-r2")
     p_ver.add_argument("--base-url", default=None, help="Live R2 custom domain URL (e.g. https://data.basinmap.org)")
@@ -768,6 +794,16 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             retries=args.retries,
         )
         print(json.dumps(result, indent=2))
+        return 0
+
+    if args.command == "make-root":
+        live = None
+        if args.live_manifest and args.live_manifest.exists():
+            live = json.loads(args.live_manifest.read_text(encoding="utf-8"))
+        root = make_root_manifest(json.loads(args.release_manifest.read_text(encoding="utf-8")), live, args.version)
+        args.out.write_text(json.dumps(root, indent=2) + "\n", encoding="utf-8")
+        print(json.dumps({"current_version": root["current_version"], "previous_version": root.get("previous_version"),
+                          "out": str(args.out)}, indent=2))
         return 0
 
     if args.command == "verify-http":

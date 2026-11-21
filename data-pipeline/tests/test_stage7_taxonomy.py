@@ -272,6 +272,28 @@ class TestParallelPublish(unittest.TestCase):
         self.assertNotIn("manifest", calls)
 
 
+class TestSwitchRelease(unittest.TestCase):
+    def test_make_root_manifest_switches_back_with_undo(self) -> None:
+        import publish_release
+        rel = {"current_version": "v0.2.0", "previous_version": "v0.1.0-demo",
+               "layers": {"basin_shards": [{"path": "/a.json"}, {"path": "/b.json"}], "basins": {}}}
+        live = {"current_version": "v0.3.0", "previous_version": "v0.2.0"}
+        root = publish_release.make_root_manifest(rel, live, "v0.2.0")
+        self.assertEqual((root["current_version"], root["previous_version"]), ("v0.2.0", "v0.3.0"))
+        self.assertEqual(root["layers"]["basin_shards"], [{"path": "/a.json"}])
+        self.assertEqual(len(rel["layers"]["basin_shards"]), 2)  # input untouched
+        with self.assertRaises(ValueError):
+            publish_release.make_root_manifest(rel, live, "v0.3.0")
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            (tmp / "rel.json").write_text(json.dumps(rel))
+            (tmp / "live.json").write_text(json.dumps(live))
+            rc = publish_release.main(["make-root", "--release-manifest", str(tmp / "rel.json"), "--live-manifest",
+                                       str(tmp / "live.json"), "--version", "v0.2.0", "--out", str(tmp / "out.json")])
+            self.assertEqual(rc, 0)
+            self.assertEqual(json.loads((tmp / "out.json").read_text())["previous_version"], "v0.3.0")
+
+
 class TestS3Publish(unittest.TestCase):
     def test_s3_mode_uploads_with_headers_and_manifest_last(self) -> None:
         import publish_release
