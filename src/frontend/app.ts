@@ -720,6 +720,8 @@ function initMapLibreIfAvailable(): boolean {
 
     state.mapInstance = map;
     state.usingMapLibre = true;
+    // Read-only handle for diagnostics and browser tests (e.g. basinmap.map.queryRenderedFeatures()).
+    (window as any).basinmap = { map, state };
     const hud = getEl("hud-engine");
     if (hud) {
       hud.textContent = `Map engine: MapLibre GL JS + PMTiles (${approvedUrl ? "live" : "ready"})`;
@@ -937,11 +939,12 @@ function applySelection(entry: TaxonEntry | null): void {
 function fitToSelection(): void {
   const map = state.mapInstance;
   if (!state.usingMapLibre || !map) return;
+  // Only move when the release knows where the selection occurs (species_index bbox, Stage 9 builds);
+  // falling back to the whole release extent would zoom the user out of the area they are studying.
   const bb = state.selection ? selectionBounds(selectedRows()) : null;
-  const target = bb || (state.manifest ? state.manifest.spatial_coverage.bbox : null);
-  if (!target) return;
-  const pad = bb && bb[0] === bb[2] && bb[1] === bb[3] ? 0.5 : 0;
-  map.fitBounds([[target[0] - pad, target[1] - pad], [target[2] + pad, target[3] + pad]], { padding: 48, maxZoom: 9, duration: 800 });
+  if (!bb) return;
+  const pad = bb[0] === bb[2] && bb[1] === bb[3] ? 0.5 : 0;
+  map.fitBounds([[bb[0] - pad, bb[1] - pad], [bb[2] + pad, bb[3] + pad]], { padding: 48, maxZoom: 9, duration: 800 });
 }
 
 function renderSpeciesKey(): void {
@@ -971,7 +974,7 @@ function renderSpeciesKey(): void {
     <ul class="species-key">${items}</ul>
     <div class="key-actions">
       <button type="button" class="btn btn-ghost" id="key-show-all">Show all</button>
-      <button type="button" class="btn btn-ghost" id="key-fit">Zoom to results</button>
+      ${selectionBounds(rows) ? `<button type="button" class="btn btn-ghost" id="key-fit">Zoom to results</button>` : ""}
       <button type="button" class="btn btn-ghost" id="key-clear">Clear</button>
     </div>`;
   body.querySelectorAll(".key-row").forEach((btn: any) => {
@@ -1279,6 +1282,8 @@ async function bootstrap(): Promise<void> {
 
   const mlReady = initMapLibreIfAvailable();
   await taxonomyReady;
+  // The taxon search replaces the old name dropdown when the release has a species index.
+  if (speciesRow && state.taxonEntries.length) speciesRow.classList.add("hidden");
   if (!mlReady) {
     switchToSvgFallback("Interactive Vector SVG (PMTiles-backed)");
   }
