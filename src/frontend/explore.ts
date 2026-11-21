@@ -50,6 +50,8 @@ export const KEY_PALETTE = [
 ];
 export const KEY_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 export const MAX_KEY_SPECIES = 26;
+/** Colour for selected species beyond the lettered key (shown, but not individually styled). */
+export const OTHER_SPECIES_COLOR = "#8a8f98";
 
 export function basemapSources(): Record<string, any> {
   const out: Record<string, any> = {};
@@ -232,14 +234,18 @@ export interface KeyEntry {
   names: string[]; // accepted name + synonyms, for releases whose tiles lack speciesKey
 }
 
-/** Deterministic letters/colours: most-recorded species first, ties by name. */
+/**
+ * Deterministic letters/colours: most-recorded species first, ties by name. Every selected
+ * species gets an entry (so the map filter keeps all of them); only the first MAX_KEY_SPECIES
+ * get a letter and palette colour, the rest share OTHER_SPECIES_COLOR and no letter.
+ */
 export function assignSpeciesKey(rows: SpeciesRow[], synonymsByKey: Map<number, string[]>): KeyEntry[] {
   const sorted = [...rows].sort((a, b) => (b.occurrence_count || 0) - (a.occurrence_count || 0) || a.name.localeCompare(b.name));
-  return sorted.slice(0, MAX_KEY_SPECIES).map((r, i) => ({
+  return sorted.map((r, i) => ({
     key: r.key,
     name: r.name,
-    letter: KEY_LETTERS[i],
-    color: KEY_PALETTE[i % KEY_PALETTE.length],
+    letter: i < MAX_KEY_SPECIES ? KEY_LETTERS[i] : "",
+    color: i < MAX_KEY_SPECIES ? KEY_PALETTE[i % KEY_PALETTE.length] : OTHER_SPECIES_COLOR,
     count: r.occurrence_count || 0,
     names: [r.name, ...(synonymsByKey.get(r.key) || [])],
   }));
@@ -273,21 +279,25 @@ export function selectionFilter(entries: KeyEntry[], hidden: Set<number>, useSpe
   const shown = entries.filter((e) => !hidden.has(e.key));
   if (!entries.length) return null;
   if (!shown.length) return ["==", 1, 0];
+  if (useSpeciesKey && shown.length > 1) {
+    return ["in", ["to-number", ["get", "speciesKey"], 0], ["literal", shown.map((e) => e.key)]];
+  }
   return ["any", ...shown.map((e) => speciesMatch(e, useSpeciesKey))];
 }
 
 export function colorExpression(entries: KeyEntry[], useSpeciesKey: boolean, fallback: string): any {
   if (!entries.length) return fallback;
+  const lettered = entries.filter((e) => e.letter);
   const expr: any[] = ["case"];
-  for (const e of entries) expr.push(speciesMatch(e, useSpeciesKey), e.color);
-  expr.push(fallback);
+  for (const e of lettered) expr.push(speciesMatch(e, useSpeciesKey), e.color);
+  expr.push(lettered.length < entries.length ? OTHER_SPECIES_COLOR : fallback);
   return expr;
 }
 
 export function letterExpression(entries: KeyEntry[], useSpeciesKey: boolean): any {
   if (!entries.length) return "";
   const expr: any[] = ["case"];
-  for (const e of entries) expr.push(speciesMatch(e, useSpeciesKey), e.letter);
+  for (const e of entries.filter((x) => x.letter)) expr.push(speciesMatch(e, useSpeciesKey), e.letter);
   expr.push("");
   return expr;
 }

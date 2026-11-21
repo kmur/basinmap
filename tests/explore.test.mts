@@ -5,6 +5,7 @@ import {
   BASEMAPS,
   KEY_LETTERS,
   MAX_KEY_SPECIES,
+  OTHER_SPECIES_COLOR,
   assignSpeciesKey,
   basemapLayers,
   basemapSources,
@@ -71,14 +72,23 @@ test("species key: deterministic letters/colours, most-recorded first, ties by n
   assert.deepEqual(key[3].names, ["Aphanius fasciatus", "Lebias fasciata"]);
   assert.notEqual(key[0].color, key[1].color);
   const many = Array.from({ length: 40 }, (_, i) => ({ ...index.species[0], key: 100 + i, name: `Sp ${i}`, occurrence_count: i }));
-  assert.equal(assignSpeciesKey(many, new Map()).length, MAX_KEY_SPECIES);
+  const big = assignSpeciesKey(many, new Map());
+  assert.equal(big.length, 40); // every selected species stays in the filter
+  assert.equal(big.filter((k) => k.letter).length, MAX_KEY_SPECIES);
+  assert.equal(big[39].color, OTHER_SPECIES_COLOR);
+  const bigFilter: any = selectionFilter(big, new Set(), true);
+  assert.equal(bigFilter[0], "in");
+  assert.equal(bigFilter[2][1].length, 40);
+  const bigColor: any = colorExpression(big, true, "#000");
+  assert.equal(bigColor.length, 1 + 2 * MAX_KEY_SPECIES + 1);
+  assert.equal(bigColor[bigColor.length - 1], OTHER_SPECIES_COLOR);
   assert.equal(KEY_LETTERS.length, MAX_KEY_SPECIES);
 });
 
 test("MapLibre expressions: speciesKey mode and name-prefix mode", () => {
   const key = assignSpeciesKey(index.species.slice(0, 2), synonymsByKey(aliases, index));
   const byKey = selectionFilter(key, new Set(), true);
-  assert.deepEqual(byKey, ["any", ["==", ["get", "speciesKey"], 2], ["==", ["get", "speciesKey"], 1]]);
+  assert.deepEqual(byKey, ["in", ["to-number", ["get", "speciesKey"], 0], ["literal", [2, 1]]]);
   const byName: any = selectionFilter(key, new Set([2]), false);
   // Aphanius fasciatus via accepted name or synonym, matched as a whole-word prefix of scientificName
   assert.equal(byName[0], "any");

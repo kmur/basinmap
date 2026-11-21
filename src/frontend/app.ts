@@ -958,18 +958,23 @@ function renderSpeciesKey(): void {
   }
   card.classList.remove("hidden");
   const rows = selectedRows();
-  const truncated = rows.length > state.keyEntries.length;
-  const items = state.keyEntries
+  const lettered = state.keyEntries.filter((k) => k.letter);
+  const others = state.keyEntries.filter((k) => !k.letter);
+  const truncated = others.length > 0;
+  const items = lettered
     .map((k) => {
       const off = state.hiddenSpecies.has(k.key);
       return `<li><button type="button" class="key-row${off ? " off" : ""}" data-key="${k.key}" aria-pressed="${!off}">
         <span class="key-dot" style="background:${k.color}">${k.letter}</span>
         <em>${escapeHtml(k.name)}</em><span class="muted">${k.count.toLocaleString("en-US")}</span></button></li>`;
     })
-    .join("");
+    .join("") + (others.length
+      ? `<li><div class="key-row key-other"><span class="key-dot" style="background:${others[0].color}"></span>
+        <span>${others.length} other species</span><span class="muted">${others.reduce((n, k) => n + k.count, 0).toLocaleString("en-US")}</span></div></li>`
+      : "");
   body.innerHTML = `
     <p class="muted-note"><strong>${escapeHtml(state.selection.label)}</strong> · ${escapeHtml(state.selection.kind)} ·
-      ${rows.length} species${truncated ? ` (key shows the ${state.keyEntries.length} most recorded)` : ""}</p>
+      ${rows.length} species${truncated ? ` (letters for the ${lettered.length} most recorded; the rest in grey)` : ""}</p>
     ${state.mapLayerIds.speciesBins.length ? "" : `<p class="muted-note">This release shows individual records from zoom ${(state.manifest?.layers.occurrence_bins_max_zoom ?? 8) + 1}; zoom in to see them.</p>`}
     <ul class="species-key">${items}</ul>
     <div class="key-actions">
