@@ -63,6 +63,7 @@ from hydrobasins import (  # noqa: E402
 )
 from pmtiles_writer import TILE_TYPE_WEBP  # noqa: E402
 from taxonomy import build_species_outputs  # noqa: E402
+from countries import add_record as add_country_record, build_country_summary  # noqa: E402
 from hydroatlas import basin_environment, field_spec, load_attributes as load_basinatlas, tile_scalars  # noqa: E402
 from basin_levels import (  # noqa: E402
     DEFAULT_LEVEL_ZOOMS, aggregate_level, build_level_outputs, load_level, write_shards as write_level_shards,
@@ -443,6 +444,7 @@ def normalize_row(row: Dict[str, str]) -> Optional[Dict[str, Any]]:
         "datasetName": row.get("datasetName", ""),
         "license": normalize_license(row.get("license", "")),
         "iucnRedListCategory": row.get("iucnRedListCategory", ""),
+        "countryCode": (row.get("countryCode") or "").strip().upper(),
     }
 
 
@@ -628,6 +630,7 @@ def build_release_from_download(
     has_iucn_column = False
     species_totals: Dict[int, Dict[str, Any]] = {}
     level_rows: List[Any] = []  # compact rows re-joined against extra HydroBASINS levels
+    country_stats: Dict[str, Dict[str, Any]] = {}  # Stage 10 fauna browser (GBIF countryCode)
 
     for raw in iter_download_rows(zip_path):
         total_rows += 1
@@ -645,6 +648,8 @@ def build_release_from_download(
                 continue
         hybas_id = basins[bidx]["properties"]["hybas_id"] if bidx is not None else ""
         yr = rec["year"]
+        add_country_record(country_stats, rec.get("countryCode", ""), rec["lon"], rec["lat"], sk,
+                           rec["species"] or "", rec["family"] or "", yr)
         if extra_levels:
             level_rows.append((rec["lon"], rec["lat"], sk or 0, rec["species"] or "", rec["family"] or "",
                                rec["iucnRedListCategory"] or "", yr or 0))
@@ -742,6 +747,17 @@ def build_release_from_download(
         taxonomy_aliases_path = f"/releases/{version}/taxonomy_aliases.json"
         species_index_counts = outputs["species_index"]["counts"]
         log(f"species index: {species_index_counts}")
+
+    # --- Country / continent summary (Stage 10) -----------------------------------------------
+    country_iucn = {str(k): v for k, v in iucn_map.items()}
+    for sk, tot in species_totals.items():
+        if tot["iucn"] and not country_iucn.get(str(sk)):
+            country_iucn[str(sk)] = tot["iucn"]
+    country_doc = build_country_summary(country_stats, country_iucn, THREATENED_IUCN, version)
+    (staging_dir / "countries.json").write_text(
+        json.dumps(country_doc, separators=(",", ":"), ensure_ascii=False) + "\n", "utf-8")
+    countries_path = f"/releases/{version}/countries.json"
+    log(f"countries: {len(country_doc['countries'])} ({len(country_doc['continents'])} continents)")
 
     # --- BasinATLAS environment (Stage 8) ----------------------------------------------------
     atlas_by_level: Dict[int, Dict[str, Any]] = {}
@@ -1030,6 +1046,8 @@ def build_release_from_download(
             **({"snapshot_own_occurrence_ids": own_ids_path} if own_ids_path else {}),
             **({"species_index": species_index_path, "taxonomy_aliases": taxonomy_aliases_path}
                if species_index_path else {}),
+            "countries": {"path": countries_path, "count": len(country_doc["countries"]),
+                          "schema": country_doc["schema"]},
             **({"basin_levels": {
                 f"{level:02d}": {"level": level, "primary": True, "layer": "basins",
                                  "min_zoom": basin_zooms[0], "max_zoom": basin_zooms[1],

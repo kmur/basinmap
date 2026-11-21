@@ -68,6 +68,7 @@ def make_simple_csv_zip(dest: Path, extra_outside: int = 3) -> Dict[str, Any]:
         rec["speciesKey"] = r["taxonKey"]
         rec["license"] = LICENSE_TO_ENUM.get(r["license"], r["license"])
         rec["occurrenceStatus"] = "PRESENT"
+        rec["countryCode"] = r.get("countryCode") or "US"  # demo records are all in Oregon
         species_iucn[r["taxonKey"]] = r["iucnRedListCategory"]
         out.write("\t".join(rec[c] for c in SIMPLE_CSV_COLUMNS) + "\n")
     for i in range(extra_outside):  # Pacific Ocean records: outside every basin

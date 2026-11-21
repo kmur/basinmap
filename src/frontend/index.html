@@ -54,10 +54,15 @@
             <label class="layer-toggle">
               <input id="toggle-basins" type="checkbox" checked />
               <span>
-                HydroBASINS Level 6
-                <small>PMTiles choropleth with scalar totals</small>
+                HydroBASINS river basins
+                <small>Coloured by the metric chosen below</small>
               </span>
             </label>
+            <div class="form-row hidden" id="basin-level-row">
+              <label for="select-basin-level">Basin detail</label>
+              <select id="select-basin-level"></select>
+              <small class="muted-note" id="basin-level-note" aria-live="polite"></small>
+            </div>
             <label class="layer-toggle">
               <input id="toggle-occurrences" type="checkbox" checked />
               <span>
@@ -81,7 +86,7 @@
               <select id="select-metric">
                 <option value="occurrence_count">Total Occurrences</option>
                 <option value="species_count">Species Richness</option>
-                <option value="threatened_count">Threatened Records (CR/EN/VU/NT)</option>
+                <option value="threatened_count">Threatened-species records (CR/EN/VU)</option>
               </select>
             </div>
             <div class="form-row taxon-search hidden" id="taxon-search-row">
@@ -106,6 +111,20 @@
             </div>
           </section>
 
+          <section class="panel-card hidden" id="country-card">
+            <h2>Browse by country</h2>
+            <div class="form-row">
+              <label for="select-continent">Continent</label>
+              <select id="select-continent"><option value="">All continents</option></select>
+            </div>
+            <div class="form-row">
+              <label for="country-search">Find a country</label>
+              <input id="country-search" type="search" autocomplete="off" placeholder="e.g. Mexico, Kenya" />
+            </div>
+            <ul id="country-list" class="country-list" aria-label="Countries"></ul>
+            <small class="muted-note" id="country-note"></small>
+          </section>
+
           <section class="panel-card" id="provenance-card">
             <h2>Provenance &amp; Licensing</h2>
             <p class="muted-note" id="provenance-text">Loading release manifest...</p>
@@ -115,8 +134,12 @@
         <main class="map-viewport" aria-label="Interactive Basin Map">
           <div id="maplibre-container"></div>
           <div id="svg-map-container" class="hidden"></div>
+          <div class="map-tools">
+            <button id="btn-export" class="btn btn-small map-tool-btn" type="button" aria-haspopup="dialog">Export map</button>
+          </div>
           <div class="map-overlay-hud">
             <div class="hud-box" id="hud-engine">Map engine: initializing...</div>
+            <div class="hud-box hidden" id="hud-legend" aria-live="polite"></div>
             <div class="hud-box">
               <span class="legend-swatch" style="background: #2d6a4f"></span>Basins
               &nbsp;
@@ -148,6 +171,42 @@
             </div>
           </section>
         </aside>
+      </div>
+
+      <aside id="report-drawer" class="drawer report-drawer hidden" aria-label="Report" aria-labelledby="report-title">
+        <div class="drawer-head">
+          <h2 id="report-title" class="report-title">Basin report</h2>
+          <div class="btn-row report-head-actions">
+            <button id="report-print" class="btn btn-small btn-ghost" type="button">Print</button>
+            <button id="report-close" class="btn btn-ghost" type="button" aria-label="Close report">&times;</button>
+          </div>
+        </div>
+        <section id="report-body" class="drawer-panel report-body"></section>
+      </aside>
+
+      <div id="export-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="export-title">
+        <form id="export-form" class="modal-card">
+          <h2 id="export-title">Export map</h2>
+          <label for="export-map-title">Title</label>
+          <input id="export-map-title" type="text" maxlength="120" />
+          <fieldset>
+            <legend>Format</legend>
+            <label class="radio"><input type="radio" name="export-format" value="png" checked /> PNG image</label>
+            <label class="radio"><input type="radio" name="export-format" value="pdf" /> PDF (A4, printable)</label>
+          </fieldset>
+          <label for="export-scale">Resolution</label>
+          <select id="export-scale">
+            <option value="1">Screen</option>
+            <option value="2" selected>High (2×, for print)</option>
+          </select>
+          <label class="check"><input id="export-legend" type="checkbox" checked /> Include legend, scale bar and species key</label>
+          <p class="muted-note">The export includes the GBIF download DOI and data attributions, which must be kept when the map is shared.</p>
+          <p id="export-status" class="muted-note" aria-live="polite"></p>
+          <div class="btn-row">
+            <button id="export-go" class="btn btn-primary" type="submit">Export</button>
+            <button id="export-cancel" class="btn btn-ghost" type="button">Cancel</button>
+          </div>
+        </form>
       </div>
 
       <aside id="contrib-drawer" class="drawer hidden" aria-label="Contribute and review observations">

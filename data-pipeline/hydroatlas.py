@@ -52,19 +52,21 @@ USER_AGENT = "basinmap-pipeline/1.0 (+https://basinmap.org)"
 MONTHS = [f"{m:02d}" for m in range(1, 13)]
 
 # (output key, BasinATLAS column, unit, scale divisor or None if the storage factor is unverified,
-#  source dataset). Scalars are small enough for vector-tile properties; monthly series go to shards.
+#  source dataset). Stage 10: factors checked against the observed ranges of the v0.4.0/v0.5.0
+# builds (limnicity, human footprint and degree of regulation reach 1000 / 492 / 9734, i.e. x10;
+# percent covers stay within 0-100, precipitation and discharge are plain mm and m3/s). Scalars are small enough for vector-tile properties; monthly series go to shards.
 SCALAR_FIELDS: List[Tuple[str, str, str, Optional[int], str]] = [
     ("air_temp_c", "tmp_dc_syr", "degrees C", 10, "WorldClim v1.4"),
-    ("precip_mm", "pre_mm_syr", "mm per year", None, "WorldClim v1.4"),
-    ("discharge_m3s", "dis_m3_pyr", "m3/s at pour point", None, "WaterGAP v2.2"),
-    ("elevation_m", "ele_mt_sav", "m a.s.l.", None, "EarthEnv-DEM90"),
-    ("forest_pc", "for_pc_sse", "percent cover", None, "GLC2000"),
-    ("wetland_pc", "wet_pc_sg1", "percent cover (GLWD class group 1)", None, "GLWD"),
-    ("lake_pc", "lka_pc_sse", "percent cover (limnicity)", None, "HydroLAKES"),
-    ("protected_pc", "pac_pc_sse", "percent cover", None, "WDPA"),
-    ("human_footprint", "hft_ix_s09", "index (2009)", None, "Human Footprint v2"),
-    ("population_km2", "ppd_pk_sav", "people per km2", None, "GPW v4"),
-    ("regulation_pc", "dor_pc_pva", "degree of regulation at pour point", None, "GRanD / HydroSHEDS"),
+    ("precip_mm", "pre_mm_syr", "mm per year", 1, "WorldClim v1.4"),
+    ("discharge_m3s", "dis_m3_pyr", "m3/s at pour point", 1, "WaterGAP v2.2"),
+    ("elevation_m", "ele_mt_sav", "m a.s.l.", 1, "EarthEnv-DEM90"),
+    ("forest_pc", "for_pc_sse", "percent cover", 1, "GLC2000"),
+    ("wetland_pc", "wet_pc_sg1", "percent cover (GLWD class group 1)", 1, "GLWD"),
+    ("lake_pc", "lka_pc_sse", "percent cover (limnicity)", 10, "HydroLAKES"),
+    ("protected_pc", "pac_pc_sse", "percent cover", 1, "WDPA"),
+    ("human_footprint", "hft_ix_s09", "index 0-50 (2009)", 10, "Human Footprint v2"),
+    ("population_km2", "ppd_pk_sav", "people per km2", 1, "GPW v4"),
+    ("regulation_pc", "dor_pc_pva", "percent of annual flow (degree of regulation at pour point)", 10, "GRanD / HydroSHEDS"),
 ]
 CLASS_FIELDS: List[Tuple[str, str, str]] = [
     ("land_cover_class", "glc_cl_smj", "GLC2000 class (spatial majority)"),
@@ -74,7 +76,7 @@ CLASS_FIELDS: List[Tuple[str, str, str]] = [
 ]
 MONTHLY_FIELDS: List[Tuple[str, str, str, Optional[int]]] = [
     ("air_temp_c", "tmp_dc_s", "degrees C", 10),
-    ("precip_mm", "pre_mm_s", "mm per month", None),
+    ("precip_mm", "pre_mm_s", "mm per month", 1),
 ]
 
 
