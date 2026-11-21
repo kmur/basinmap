@@ -57,6 +57,7 @@ export interface ReleaseManifest {
     bbox: [number, number, number, number];
     center: [number, number];
   };
+  temporal_coverage?: { min_year: number; max_year: number; undated_records: number };
   counts: {
     occurrences: number;
     species: number;

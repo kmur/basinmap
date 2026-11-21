@@ -49,8 +49,8 @@ const state: AppState = {
   deduplicatedCount: 0,
   selectedMetric: "occurrence_count",
   selectedSpecies: "",
-  minYear: 2018,
-  maxYear: 2026,
+  minYear: 1900,
+  maxYear: new Date().getFullYear(),
   showBasins: true,
   showOccurrences: true,
   showApproved: true,
@@ -640,6 +640,19 @@ function switchToSvgFallback(reason: string): void {
   renderSvgMapFallback();
 }
 
+/** Default the year filter to the release's own span (all records visible on first load). Releases
+ * built before temporal_coverage existed fall back to 1900 through the current year. */
+function applyReleaseYearRange(manifest: ReleaseManifest): void {
+  const span = manifest.temporal_coverage;
+  const thisYear = new Date().getFullYear();
+  state.minYear = span && span.min_year > 0 ? span.min_year : 1900;
+  state.maxYear = span && span.max_year > 0 ? span.max_year : thisYear;
+  const yearMin = getEl("filter-year-min");
+  const yearMax = getEl("filter-year-max");
+  if (yearMin) yearMin.value = String(state.minYear);
+  if (yearMax) yearMax.value = String(state.maxYear);
+}
+
 function syncMapFiltersAndLayers(): void {
   if (state.usingMapLibre && state.mapInstance) {
     const map = state.mapInstance;
@@ -654,10 +667,15 @@ function syncMapFiltersAndLayers(): void {
       if (map.getLayer(layerId)) map.setPaintProperty(layerId, "fill-color", basinFillExpression());
     }
 
+    // Undated records (year 0, common for old museum specimens) are never hidden by the year range,
+    // matching the list filter.
     const filterExpr: any[] = [
       "all",
-      [">=", ["get", "year"], state.minYear],
-      ["<=", ["get", "year"], state.maxYear],
+      [
+        "any",
+        ["==", ["get", "year"], 0],
+        ["all", [">=", ["get", "year"], state.minYear], ["<=", ["get", "year"], state.maxYear]],
+      ],
     ];
     if (state.selectedSpecies) {
       filterExpr.push(["==", ["get", "scientificName"], state.selectedSpecies]);
@@ -793,6 +811,7 @@ async function bootstrap(): Promise<void> {
   const manifestUrl = resolveDataUrl(state.publicDataUrl, "/releases/manifest.json");
   const manifest: ReleaseManifest = await fetchJsonWithTimeout(manifestUrl, 5000);
   state.manifest = manifest;
+  applyReleaseYearRange(manifest);
 
   const versionBadge = getEl("badge-version");
   const doiBadge = getEl("badge-doi");

@@ -207,7 +207,11 @@ class TestMultiRegionBuild(unittest.TestCase):
         self.assertEqual(sum(r["occurrence_count"] for r in idx["species"]), self.demo_rows + 3)
         first = self.checklist["species"][0]["name"]
         self.assertEqual(aliases["aliases"][taxonomy.normalize_alias(first)], self.checklist["species"][0]["key"])
+        tc = manifest["temporal_coverage"]
+        self.assertGreater(tc["min_year"], 1800)
+        self.assertGreaterEqual(tc["max_year"], tc["min_year"])
         root_manifest = json.loads((root / "releases" / "manifest.json").read_text())
+        self.assertEqual(root_manifest["temporal_coverage"], tc)
         self.assertEqual(root_manifest["layers"]["taxonomy_aliases"], "/releases/v0.3.0-test/taxonomy_aliases.json")
 
     def test_default_build_still_drops_unassigned_and_rejects_mixed_levels(self) -> None:
@@ -266,6 +270,48 @@ class TestParallelPublish(unittest.TestCase):
             with self.assertRaises(subprocess.CalledProcessError):
                 publish_release.run_upload_commands(cmds, jobs=2, retries=2, sleep=lambda s: None)
         self.assertNotIn("manifest", calls)
+
+
+class TestS3Publish(unittest.TestCase):
+    def test_s3_mode_uploads_with_headers_and_manifest_last(self) -> None:
+        import publish_release
+
+        class FakeS3:
+            def __init__(self) -> None:
+                self.calls: List[tuple] = []
+                self.fail_once = {"releases/v1/basins/b.json"}
+
+            def upload_file(self, path, bucket, key, ExtraArgs=None):
+                if key in self.fail_once:
+                    self.fail_once.discard(key)
+                    raise RuntimeError("500 Internal Server Error")
+                self.calls.append((bucket, key, ExtraArgs["CacheControl"], ExtraArgs["ContentType"]))
+
+        plan = [{"local_path": f"/x/{k}", "key": k, "cache_control": cc, "content_type": ct} for k, cc, ct in [
+            ("releases/v1/basins/a.json", "public, max-age=31536000, immutable", "application/json"),
+            ("releases/v1/basins/b.json", "public, max-age=31536000, immutable", "application/json"),
+            ("releases/v1/occurrences.pmtiles", "public, max-age=31536000, immutable", "application/vnd.pmtiles"),
+            ("releases/manifest.json", "public, max-age=60, must-revalidate", "application/json"),
+        ]]
+        fake = FakeS3()
+        with mock.patch.object(publish_release, "build_upload_plan", return_value=plan):
+            res = publish_release.publish_release(Path("/x"), "v1", mode="s3", bucket="bkt", jobs=3,
+                                                  s3_client=fake)
+        self.assertEqual(res["object_count"], 4)
+        self.assertEqual(fake.calls[-1][1], "releases/manifest.json")
+        self.assertEqual({c[1] for c in fake.calls}, {p["key"] for p in plan})
+        pm = [c for c in fake.calls if c[1].endswith(".pmtiles")][0]
+        self.assertEqual(pm[3], "application/vnd.pmtiles")
+
+    def test_s3_mode_requires_credentials(self) -> None:
+        import publish_release
+        try:
+            import boto3  # noqa: F401
+        except ImportError:
+            self.skipTest("boto3 not installed")
+        with mock.patch.dict("os.environ", {"R2_ACCESS_KEY_ID": "", "R2_SECRET_ACCESS_KEY": ""}):
+            with self.assertRaises(PermissionError):
+                publish_release.r2_s3_client("acct")
 
 
 if __name__ == "__main__":

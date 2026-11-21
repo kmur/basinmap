@@ -18,6 +18,7 @@ import http.client
 import http.server
 import json
 import mimetypes
+import os
 import re
 import shutil
 import socket
@@ -187,6 +188,61 @@ def run_upload_commands(commands: List[List[str]], jobs: int = 1, retries: int =
     print("[publish] switched releases/manifest.json", flush=True)
 
 
+def r2_s3_client(account_id: Optional[str] = None, jobs: int = 32) -> Any:
+    """boto3 S3 client for Cloudflare R2 (credentials: R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY,
+    account: CLOUDFLARE_ACCOUNT_ID). One pooled HTTPS connection set for every object, with
+    botocore's adaptive retries for transient 5xx/throttling."""
+    import boto3  # type: ignore
+    from botocore.config import Config  # type: ignore
+
+    account = account_id or os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
+    key_id = os.environ.get("R2_ACCESS_KEY_ID", "")
+    secret = os.environ.get("R2_SECRET_ACCESS_KEY", "")
+    if not (account and key_id and secret):
+        raise PermissionError("--mode s3 needs CLOUDFLARE_ACCOUNT_ID, R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY")
+    return boto3.client(
+        "s3", endpoint_url=f"https://{account}.r2.cloudflarestorage.com", region_name="auto",
+        aws_access_key_id=key_id, aws_secret_access_key=secret,
+        config=Config(retries={"max_attempts": 10, "mode": "adaptive"}, max_pool_connections=max(10, jobs + 4)),
+    )
+
+
+def upload_plan_s3(plan: List[Dict[str, Any]], bucket: str, client: Any, jobs: int = 32,
+                   retries: int = 4, sleep: Callable[[float], None] = time.sleep) -> None:
+    """Upload a release plan through the S3 API; the root manifest (last item) goes only after
+    every other object succeeded. Large files use multipart automatically (no 300 MiB limit)."""
+    if not plan:
+        return
+
+    def put(item: Dict[str, Any]) -> None:
+        for attempt in range(retries + 1):
+            try:
+                client.upload_file(item["local_path"], bucket, item["key"], ExtraArgs={
+                    "CacheControl": item["cache_control"], "ContentType": item["content_type"]})
+                return
+            except Exception:  # botocore already retried transient errors; this covers the rest
+                if attempt == retries:
+                    raise
+                sleep(min(60.0, 2.0 * 2 ** attempt))
+
+    body, last = plan[:-1], plan[-1]
+    done = 0
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
+        futures = [pool.submit(put, item) for item in body]
+        try:
+            for fut in concurrent.futures.as_completed(futures):
+                fut.result()
+                done += 1
+                if done % 1000 == 0 or done == len(body):
+                    print(f"[publish] uploaded {done}/{len(body)} release objects", flush=True)
+        except BaseException:
+            for f in futures:
+                f.cancel()
+            raise
+    put(last)
+    print(f"[publish] switched {last['key']}", flush=True)
+
+
 def publish_release(
     root: Path,
     version: Optional[str],
@@ -197,6 +253,7 @@ def publish_release(
     rclone_remote: str = "r2",
     jobs: int = 1,
     retries: int = 4,
+    s3_client: Any = None,
 ) -> Dict[str, Any]:
     if not version:
         manifest_path = root / "releases" / "manifest.json"
@@ -257,6 +314,12 @@ def publish_release(
             "dry_run": dry_run,
             "commands": [" ".join(c) for c in commands],
         }
+
+    if mode == "s3":
+        if not dry_run:
+            upload_plan_s3(plan, bucket, s3_client or r2_s3_client(jobs=jobs), jobs=jobs, retries=retries)
+        return {"mode": "s3", "version": version, "bucket": bucket, "object_count": len(plan),
+                "dry_run": dry_run, "keys": [i["key"] for i in plan]}
 
     if mode == "rclone":
         # S3-compatible upload via an rclone remote configured for R2 (no size limit below 5 GB
@@ -670,7 +733,8 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     p_pub = subparsers.add_parser("publish", help="Stage or upload a release to R2")
     p_pub.add_argument("--root", type=Path, default=SCRIPT_DIR.parent / "public-r2")
     p_pub.add_argument("--version", default=None, help="Release version (defaults to manifest.json current_version)")
-    p_pub.add_argument("--mode", choices=["local", "wrangler", "rclone"], default="local")
+    p_pub.add_argument("--mode", choices=["local", "wrangler", "rclone", "s3"], default="local",
+                       help="s3 = R2 S3 API via boto3 (fastest; needs R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY)")
     p_pub.add_argument("--rclone-remote", default="r2", help="rclone remote configured for R2 (--mode rclone)")
     p_pub.add_argument("--bucket", default="basinmap-public-data")
     p_pub.add_argument("--dest", type=Path, default=None, help="Target local directory for --mode local")

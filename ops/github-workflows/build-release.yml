@@ -6,6 +6,9 @@ name: Build data release
 # Required repository secrets:
 #   GBIF_USER, GBIF_PWD                       GBIF account that requests the download (gets the DOI)
 #   CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID  (already used by deploy.yml)
+# Recommended (fast upload through R2's S3 API; without them uploads fall back to wrangler,
+# which takes ~2.5 h for a global release):
+#   R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY     R2 API token with Object Read & Write
 #
 # Releases are immutable: re-running with a version that already exists in the bucket fails
 # unless "replace" is ticked. Production is only written when target=production.
@@ -62,6 +65,8 @@ jobs:
       GBIF_PWD: ${{ secrets.GBIF_PWD }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
       VERSION: ${{ inputs.version }}
       WORK: data-pipeline/work
     steps:
@@ -78,8 +83,10 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Install Node dependencies (wrangler)
-        run: npm install
+      - name: Install Node dependencies (wrangler) and boto3
+        run: |
+          npm install
+          python3 -m pip install --quiet boto3
 
       - name: Check inputs and secrets
         run: |
@@ -162,7 +169,14 @@ jobs:
 
       - name: Publish to R2 (${{ inputs.target }})
         if: inputs.publish
-        run: python3 data-pipeline/publish_release.py publish --root build-r2 --version "$VERSION" --mode wrangler --bucket "$BUCKET" --jobs 12 --retries 5
+        run: |
+          if [ -n "$R2_ACCESS_KEY_ID" ] && [ -n "$R2_SECRET_ACCESS_KEY" ]; then
+            echo "Uploading through the R2 S3 API (32 parallel)"
+            python3 data-pipeline/publish_release.py publish --root build-r2 --version "$VERSION" --mode s3 --bucket "$BUCKET" --jobs 32 --retries 5
+          else
+            echo "::warning::R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY not set; falling back to slow wrangler uploads"
+            python3 data-pipeline/publish_release.py publish --root build-r2 --version "$VERSION" --mode wrangler --bucket "$BUCKET" --jobs 12 --retries 5
+          fi
 
       - name: Verify HTTP 206 range delivery
         if: inputs.publish

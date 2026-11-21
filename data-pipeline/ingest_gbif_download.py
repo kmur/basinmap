@@ -700,6 +700,11 @@ def build_release_from_download(
         iucn_source = "unavailable (run build without --no-enrich to populate threatened_count)"
         iucn_map, titles = {}, {}
 
+    dated_years = [pt[2]["year"] for pt in points if pt[2]["year"]]
+    temporal_coverage = {"min_year": min(dated_years) if dated_years else 0,
+                         "max_year": max(dated_years) if dated_years else 0,
+                         "undated_records": len(points) - len(dated_years)}
+
     # --- Species index & taxonomy aliases (Stage 7) -----------------------------------------
     species_index_path = taxonomy_aliases_path = None
     species_index_counts: Dict[str, Any] = {}
@@ -907,6 +912,7 @@ def build_release_from_download(
                              "source_dataset_key": checklist.get("source_dataset_key")}} if checklist else {}),
             "sources": sources,
         },
+        "temporal_coverage": temporal_coverage,
         "spatial_coverage": {"crs": "EPSG:4326", "bbox": cov_bbox,
                              "center": [round((cov_bbox[0] + cov_bbox[2]) / 2, 5), round((cov_bbox[1] + cov_bbox[3]) / 2, 5)]},
         "counts": {
