@@ -17,9 +17,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version (e.g. v0.3.0)"
+        description: "Release version (e.g. v0.4.0)"
         required: true
-        default: "v0.3.0"
+        default: "v0.4.0"
       query:
         description: "Query file in data-pipeline/queries/"
         required: true
@@ -33,6 +33,13 @@ on:
       hydrobasins_region:
         description: "HydroBASINS region (na, sa, af, ... or all)"
         default: "all"
+      extra_levels:
+        description: "Extra HydroBASINS levels, space-separated (Stage 8: '3 8'; blank = none)"
+        default: "3 8"
+      basinatlas:
+        description: "Add BasinATLAS v1.0 environment values (downloads 4.3 GB from Figshare)"
+        type: boolean
+        default: true
       basin_max_zoom:
         description: "Basin tiles max zoom (lower for global builds; MapLibre overzooms)"
         default: "7"
@@ -141,6 +148,26 @@ jobs:
             --level "${{ inputs.hydrobasins_level }}"
           ls -l "$WORK/hydrobasins"
 
+      - name: Fetch HydroBASINS for extra levels
+        if: inputs.extra_levels != ''
+        run: |
+          for L in ${{ inputs.extra_levels }}; do
+            python3 data-pipeline/ingest_gbif_download.py --workdir "$WORK" fetch-hydrobasins \
+              --region "${{ inputs.hydrobasins_region }}" --level "$L"
+          done
+          ls -l "$WORK/hydrobasins"
+          df -h .
+
+      - name: Fetch and extract BasinATLAS (4.3 GB)
+        if: inputs.basinatlas
+        run: |
+          python3 data-pipeline/hydroatlas.py fetch --workdir "$WORK/hydroatlas"
+          python3 data-pipeline/hydroatlas.py extract --source "$WORK/hydroatlas/BasinATLAS_Data_v10_shp.zip" \
+            --levels ${{ inputs.hydrobasins_level }} ${{ inputs.extra_levels }} --out-dir "$WORK/hydroatlas" \
+            | tee /tmp/basinatlas.json
+          rm -f "$WORK/hydroatlas/BasinATLAS_Data_v10_shp.zip"   # free disk for the build
+          ls -l "$WORK/hydroatlas"
+
       - name: Fetch GBIF Backbone checklist
         if: inputs.taxon_key != ''
         run: python3 data-pipeline/taxonomy.py fetch --taxon-key "${{ inputs.taxon_key }}" --workdir "$WORK/taxonomy"
@@ -150,10 +177,17 @@ jobs:
           LEVEL=$(printf '%02d' "${{ inputs.hydrobasins_level }}")
           CHECKLIST=()
           [ -n "${{ inputs.taxon_key }}" ] && CHECKLIST=(--checklist "$WORK/taxonomy/checklist.json")
+          EXTRA=()
+          for L in ${{ inputs.extra_levels }}; do
+            EXTRA+=("$WORK"/hydrobasins/hybas_*_lev$(printf '%02d' "$L")_v1c.zip)
+          done
+          [ ${#EXTRA[@]} -gt 0 ] && EXTRA=(--extra-hydrobasins "${EXTRA[@]}")
+          ATLAS=()
+          [ "${{ inputs.basinatlas }}" = "true" ] && ATLAS=(--basinatlas-dir "$WORK/hydroatlas")
           python3 data-pipeline/ingest_gbif_download.py build \
             --gbif-dir "$WORK/gbif-${{ steps.request.outputs.key }}" \
             --hydrobasins "$WORK"/hydrobasins/hybas_*_lev${LEVEL}_v1c.zip \
-            --keep-unassigned "${CHECKLIST[@]}" \
+            --keep-unassigned "${CHECKLIST[@]}" "${EXTRA[@]}" "${ATLAS[@]}" \
             --version "$VERSION" --output-root build-r2 \
             --basin-zooms 0 "${{ inputs.basin_max_zoom }}" \
             --max-archive-mb 290 | tee /tmp/summary.json
@@ -192,4 +226,5 @@ jobs:
             echo
             echo "- GBIF download: https://www.gbif.org/occurrence/download/${{ steps.request.outputs.key }}"
             [ -f /tmp/summary.json ] && { echo; echo '```json'; cat /tmp/summary.json; echo '```'; }
+            [ -f /tmp/basinatlas.json ] && { echo; echo "BasinATLAS observed value ranges:"; echo '```json'; cat /tmp/basinatlas.json; echo '```'; }
           } >> "$GITHUB_STEP_SUMMARY"

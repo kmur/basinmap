@@ -131,6 +131,39 @@ taxon 547, HydroBASINS level 6 for all regions, basin tiles to zoom 7, target `s
 * Archives are capped at 290 MB so `wrangler r2 object put` can upload them.
 * Run with target `production` only after checking the staging result.
 
+## Stage 8: HydroBASINS Levels 3/6/8 and BasinATLAS Environment (`v0.4.0`)
+
+Adds two more basin scales and hydro-environmental attributes to a release:
+
+* **Level 3** (large river systems, ~300 worldwide) and **Level 8** (small tributary catchments,
+  ~190k worldwide) next to the primary Level 6. Each gets `basins_lNN.pmtiles` (scalar properties
+  only; default zooms L3 0-5, L8 5-9; extra levels are simplified on load, about 1 px at max zoom)
+  and pre-aggregated shards. Level 3 has one shard per basin (`basins_l03/<hybas_id>.json`).
+  Level 8 shards are grouped by their Level 6 parent (`basins_l08/<l6_hybas_id>.json` holds all
+  children; Pfafstetter codes nest, so the first 6 digits of a Level 8 code are its parent), which
+  keeps the release at ~16k extra files instead of ~190k.
+* **BasinATLAS v1.0** (Linke et al. 2019, doi:10.1038/s41597-019-0300-6, CC BY 4.0) via
+  `hydroatlas.py`: `fetch` downloads `BasinATLAS_Data_v10_shp.zip` (4.3 GB, Figshare
+  doi:10.6084/m9.figshare.9890531, MD5-verified) and `extract` streams only the needed columns of
+  `BasinATLAS_v10_levNN.dbf` into `basinatlas_levNN.json`. Shards gain an `environment` block:
+  12-month air temperature and precipitation, annual temperature/precipitation, discharge,
+  elevation, forest, wetland, lake (limnicity), protected area, human footprint, population
+  density, degree of regulation, and land-cover/climate-zone/biome/ecoregion classes. Tiles gain
+  `env_*` scalars for choropleths.
+  * Temperature is stored by BasinATLAS in tenths of a degree (HydroATLAS TechDoc v1.0) and is
+    divided by 10. Other storage factors are not stated in the TechDoc: they are kept as stored,
+    marked `"scale": null`, and the manifest records each column's observed min/max
+    (`environment.observed_ranges`) so they can be checked against the BasinATLAS Catalog before
+    Stage 10 displays them.
+  * SoilGrids soil texture (ODbL 1.0) is not extracted, so environment data stays CC BY 4.0.
+* Manifest: `layers.basin_levels` (`"03"`, `"06"` primary, `"08"`) with archives, zooms, shard
+  template and grouping; `environment` (units, scales, source, citation, observed ranges);
+  `counts.basins_l03` / `basins_l08`. Releases built without these inputs are unchanged.
+
+CLI: `build ... --extra-hydrobasins <hybas_*_lev03 and lev08 zips> --basinatlas-dir <dir>
+[--level-zoom 8 5 9]`. In GitHub Actions the **Build data release** workflow does all of it; the
+new inputs `extra_levels` (default `3 8`) and `basinatlas` (default on) control it.
+
 ## Benchmark: `benchmark_range_pilot.py`
 
 This script replays the data-origin requests a MapLibre + pmtiles.js browser makes for one visit. The visit follows the same steps as `src/frontend/app.ts`:

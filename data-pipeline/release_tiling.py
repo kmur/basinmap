@@ -53,6 +53,15 @@ BASIN_SCALAR_FIELDS = {
     "min_year": "Number",
     "max_year": "Number",
     "shard_path": "String",
+    "parent_hybas_id": "String",
+    # BasinATLAS v1.0 scalars (Stage 8); present only when the release carries environment data
+    "env_air_temp_c": "Number",
+    "env_precip_mm": "Number",
+    "env_elevation_m": "Number",
+    "env_forest_pc": "Number",
+    "env_lake_pc": "Number",
+    "env_protected_pc": "Number",
+    "env_human_footprint": "Number",
 }
 
 OCCURRENCE_POINT_FIELDS = {

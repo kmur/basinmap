@@ -63,6 +63,10 @@ from hydrobasins import (  # noqa: E402
 )
 from pmtiles_writer import TILE_TYPE_WEBP  # noqa: E402
 from taxonomy import build_species_outputs  # noqa: E402
+from hydroatlas import basin_environment, field_spec, load_attributes as load_basinatlas, tile_scalars  # noqa: E402
+from basin_levels import (  # noqa: E402
+    DEFAULT_LEVEL_ZOOMS, aggregate_level, build_level_outputs, load_level, write_shards as write_level_shards,
+)
 from release_tiling import (  # noqa: E402
     BASIN_SCALAR_FIELDS,
     CDN_CACHE_CEILING_BYTES,
@@ -554,6 +558,9 @@ def build_release_from_download(
     force: bool = False,
     keep_unassigned: bool = False,
     checklist_path: Optional[Path] = None,
+    extra_levels: Optional[Dict[int, Sequence[Path]]] = None,
+    basinatlas_dir: Optional[Path] = None,
+    level_zooms: Optional[Dict[int, Tuple[int, int]]] = None,
 ) -> Dict[str, Any]:
     """Build an immutable release directory from a fetched GBIF download.
 
@@ -562,6 +569,9 @@ def build_release_from_download(
     small islands) stay in the occurrence tiles with an empty ``hybas_id`` instead of being dropped.
     ``checklist_path`` (from ``taxonomy.py fetch``) adds ``species_index.json`` and
     ``taxonomy_aliases.json`` to the release.
+    ``extra_levels`` ({level: [HydroBASINS files]}) adds ``basins_lNN.pmtiles`` + shards per level
+    (Stage 8; see ``basin_levels.py``). ``basinatlas_dir`` holds ``basinatlas_levNN.json`` from
+    ``hydroatlas.py extract``; matching levels get BasinATLAS environment values.
     """
     hydrobasins_paths = [Path(hydrobasins_path)] if isinstance(hydrobasins_path, (str, Path)) else [Path(x) for x in hydrobasins_path]
     if not hydrobasins_paths:
@@ -617,6 +627,7 @@ def build_release_from_download(
     own_ids: List[str] = []
     has_iucn_column = False
     species_totals: Dict[int, Dict[str, Any]] = {}
+    level_rows: List[Any] = []  # compact rows re-joined against extra HydroBASINS levels
 
     for raw in iter_download_rows(zip_path):
         total_rows += 1
@@ -634,6 +645,9 @@ def build_release_from_download(
                 continue
         hybas_id = basins[bidx]["properties"]["hybas_id"] if bidx is not None else ""
         yr = rec["year"]
+        if extra_levels:
+            level_rows.append((rec["lon"], rec["lat"], sk or 0, rec["species"] or "", rec["family"] or "",
+                               rec["iucnRedListCategory"] or "", yr or 0))
         if sk and rec["species"]:
             tot = species_totals.get(sk)
             if tot is None:
@@ -725,6 +739,16 @@ def build_release_from_download(
         species_index_counts = outputs["species_index"]["counts"]
         log(f"species index: {species_index_counts}")
 
+    # --- BasinATLAS environment (Stage 8) ----------------------------------------------------
+    atlas_by_level: Dict[int, Dict[str, Any]] = {}
+    if basinatlas_dir is not None:
+        for lvl in sorted({level, *(extra_levels or {})}):
+            f = Path(basinatlas_dir) / f"basinatlas_lev{lvl:02d}.json"
+            if f.exists():
+                atlas_by_level[lvl] = load_basinatlas(f)
+                log(f"BasinATLAS level {lvl}: {atlas_by_level[lvl]['count']:,} basins")
+    atlas_primary = atlas_by_level.get(level)
+
     # --- Basin features & shards ------------------------------------------------------------
     use_sqlite = shard_format == "sqlite" or (shard_format == "auto" and (level >= 7 or len(basins) > MAX_JSON_SHARDS))
     basin_features: List[Dict[str, Any]] = []
@@ -757,6 +781,7 @@ def build_release_from_download(
             "min_year": (a["min_year"] or 0) if a else 0,
             "max_year": (a["max_year"] or 0) if a else 0,
             "shard_path": f"basins/{hybas_id}.json",
+            **tile_scalars(atlas_primary, hybas_id),
         }
         basin_features.append({"type": "Feature", "id": hybas_id, "properties": scalar, "geometry": feat["geometry"]})
         datasets = []
@@ -776,6 +801,7 @@ def build_release_from_download(
             "basis_of_record": dict(sorted(a["basis"].items())) if a else {},
             "datasets": datasets,
             "provenance": {"gbif_doi": meta["doi"], "download_key": key},
+            **({"environment": basin_environment(atlas_primary, hybas_id)} if atlas_primary else {}),
         }
 
     shard_refs: List[Dict[str, Any]] = []
@@ -821,6 +847,48 @@ def build_release_from_download(
     occ_parts = write_partitioned_pmtiles(occ_tiles, staging_dir, "occurrences", url_prefix, occ_md,
                                           max_bytes=max_archive_bytes, center_zoom=occurrence_zooms[1])
     del occ_tiles
+
+    # --- Extra HydroBASINS levels (Stage 8) --------------------------------------------------
+    level_layers: Dict[str, Any] = {}
+    level_counts: Dict[str, Any] = {}
+    if extra_levels:
+        parent_by_pfaf = {str(f["properties"]["pfaf_id"]): str(f["properties"]["hybas_id"]) for f in basins}
+        for lvl in sorted(extra_levels):
+            if lvl == level:
+                continue
+            lvl_basins = load_level(extra_levels[lvl], lvl)
+            if scope_bbox is not None or pfaf_prefixes:
+                lvl_basins = filter_basins(lvl_basins, bbox=scope_bbox,
+                                           pfaf_prefixes=[str(x)[:lvl] for x in pfaf_prefixes] if pfaf_prefixes else None)
+            log(f"level {lvl}: {len(lvl_basins):,} basins")
+            res = aggregate_level(lvl_basins, level_rows, lvl, iucn_map, THREATENED_IUCN, progress=log)
+            out = build_level_outputs(lvl_basins, res["agg"], lvl, version, THREATENED_IUCN,
+                                      atlas=atlas_by_level.get(lvl), parent_by_pfaf=parent_by_pfaf, parent_level=level)
+            refs = write_level_shards(staging_dir, out["shards"], version, sha256_file)
+            zooms = (level_zooms or {}).get(lvl) or DEFAULT_LEVEL_ZOOMS.get(lvl, (0, 8))
+            log(f"tiling level {lvl} basins z{zooms[0]}-{zooms[1]}")
+            lvl_tiles = build_basin_tiles(out["features"], zooms[0], zooms[1])
+            name = f"basins_l{lvl:02d}"
+            parts = write_partitioned_pmtiles(
+                lvl_tiles, staging_dir, name, url_prefix,
+                _tile_layer_metadata(f"HydroBASINS Level {lvl} Summary",
+                                     f"HydroBASINS level {lvl} polygons with scalar GBIF counts",
+                                     f"GBIF.org (doi:{meta['doi']}); HydroSHEDS / HydroBASINS v1c Level {lvl}",
+                                     "basins", BASIN_SCALAR_FIELDS),
+                max_bytes=max_archive_bytes, center_zoom=zooms[0])
+            del lvl_tiles
+            level_layers[f"{lvl:02d}"] = {
+                "level": lvl, "primary": False, "pmtiles": parts, "source_layer": "basins",
+                "min_zoom": zooms[0], "max_zoom": zooms[1],
+                "shards_template": (f"{url_prefix}/{name}/{{parent_hybas_id}}.json" if out["grouped_by_parent"]
+                                    else f"{url_prefix}/{name}/{{hybas_id}}.json"),
+                "shard_grouping": f"parent_level_{level:02d}" if out["grouped_by_parent"] else "basin",
+                "shard_files": len(refs), "shard_bytes": sum(r["bytes"] for r in refs),
+                "basins": len(lvl_basins), "assigned_occurrences": res["assigned"],
+                "environment": lvl in atlas_by_level,
+            }
+            level_counts[f"basins_l{lvl:02d}"] = len(lvl_basins)
+            log(f"level {lvl}: {res['assigned']:,} records in basins, {len(refs):,} shard files")
 
     rasters = []
     if raster_tiles_dir is not None:
@@ -927,6 +995,7 @@ def build_release_from_download(
                                          if (iucn_map.get(str(k)) or v["iucn"]) in THREATENED_IUCN)}),
             "unassigned_kept": unassigned if keep_unassigned else 0,
             **({"checklist_species": species_index_counts.get("species", 0)} if species_index_counts else {}),
+            **level_counts,
         },
         "field_definitions": {
             "occurrence_count": "GBIF records whose coordinates fall inside the basin polygon",
@@ -951,7 +1020,18 @@ def build_release_from_download(
             **({"snapshot_own_occurrence_ids": own_ids_path} if own_ids_path else {}),
             **({"species_index": species_index_path, "taxonomy_aliases": taxonomy_aliases_path}
                if species_index_path else {}),
+            **({"basin_levels": {
+                f"{level:02d}": {"level": level, "primary": True, "layer": "basins",
+                                 "min_zoom": basin_zooms[0], "max_zoom": basin_zooms[1],
+                                 "shards_template": shard_template, "shard_grouping": "basin",
+                                 "environment": atlas_primary is not None},
+                **level_layers}} if level_layers or atlas_primary else {}),
         },
+        **({"environment": {**field_spec(),
+                            "levels": sorted(f"{l:02d}" for l in atlas_by_level),
+                            "observed_ranges": {f"{l:02d}": a.get("observed_ranges", {})
+                                                for l, a in sorted(atlas_by_level.items())}}}
+           if atlas_by_level else {}),
         "overlays": {"approved_observations": {"format": "geojson", "path": "/overlays/approved.geojson",
                                                "cache_control": MUTABLE_CACHE_CONTROL}},
     }
@@ -1033,6 +1113,13 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
                        help="HydroSHEDS hybas_*_levNN_v1c.zip, .shp, or GeoJSON (several regions allowed)")
         s.add_argument("--keep-unassigned", action="store_true",
                        help="Keep records outside every basin in the occurrence tiles (global taxa, coasts)")
+        s.add_argument("--extra-hydrobasins", type=Path, nargs="+", default=None,
+                       help="HydroBASINS files for extra levels (e.g. all hybas_*_lev03 and lev08 zips); "
+                            "level read from the file name")
+        s.add_argument("--basinatlas-dir", type=Path, default=None,
+                       help="Folder with basinatlas_levNN.json from hydroatlas.py extract")
+        s.add_argument("--level-zoom", type=int, nargs=3, action="append", default=None,
+                       metavar=("LEVEL", "MIN", "MAX"), help="Tile zoom range for an extra level")
         s.add_argument("--checklist", type=Path, default=None,
                        help="checklist.json from taxonomy.py fetch: adds species_index.json + taxonomy_aliases.json")
         s.add_argument("--level", type=int, default=None)
@@ -1057,6 +1144,17 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     return p.parse_args(argv)
 
 
+def group_hydrobasins_by_level(paths: Sequence[Path]) -> Dict[int, List[Path]]:
+    """{level: [files]} from HydroSHEDS names like hybas_na_lev08_v1c.zip."""
+    out: Dict[int, List[Path]] = {}
+    for p in paths:
+        m = re.search(r"lev(\d{2})", Path(p).name, re.IGNORECASE)
+        if not m:
+            raise ValueError(f"Cannot read the HydroBASINS level from {Path(p).name}")
+        out.setdefault(int(m.group(1)), []).append(Path(p))
+    return out
+
+
 def _build_from_args(args: argparse.Namespace, gbif_dir: Path, hydrobasins: Sequence[Path]) -> Dict[str, Any]:
     client = None if args.no_enrich else client_from_env(args.api_base)
     max_bytes = int(args.max_archive_mb * 1e6)
@@ -1071,6 +1169,9 @@ def _build_from_args(args: argparse.Namespace, gbif_dir: Path, hydrobasins: Sequ
         shard_format=args.shard_format, raster_tiles_dir=args.raster_tiles_dir, raster_name=args.raster_name,
         raster_attribution=args.raster_attribution, force=args.force,
         keep_unassigned=args.keep_unassigned, checklist_path=args.checklist,
+        extra_levels=group_hydrobasins_by_level(args.extra_hydrobasins) if args.extra_hydrobasins else None,
+        basinatlas_dir=args.basinatlas_dir,
+        level_zooms={lvl: (lo, hi) for lvl, lo, hi in args.level_zoom} if args.level_zoom else None,
     )
 
 

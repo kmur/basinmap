@@ -58,6 +58,8 @@ def iter_archive_specs(manifest: Dict[str, Any]) -> List[Dict[str, Any]]:
             specs.extend(layer.get("partitions") or [layer])
     for raster in layers.get("rasters", []):
         specs.extend(raster.get("partitions") or [raster])
+    for lvl in (layers.get("basin_levels") or {}).values():
+        specs.extend(lvl.get("pmtiles") or [])  # extra HydroBASINS levels (Stage 8)
     return specs
 
 
