@@ -201,6 +201,9 @@ class TestMultiRegionBuild(unittest.TestCase):
         aliases = json.loads((rel / "taxonomy_aliases.json").read_text())
         in_checklist = [r for r in idx["species"] if r["in_checklist"]]
         self.assertEqual(len(in_checklist), len(self.checklist["species"]))
+        self.assertIn("speciesKey", manifest["layers"]["occurrence_point_fields"])
+        with_bbox = [r for r in idx["species"] if r["occurrence_count"]]
+        self.assertTrue(all(len(r["bbox"]) == 4 and r["bbox"][0] <= r["bbox"][2] for r in with_bbox))
         seal = [r for r in idx["species"] if r["name"] == "Phoca vitulina"]
         self.assertEqual(len(seal), 1)  # off-basin species outside the checklist still indexed
         self.assertEqual((seal[0]["occurrence_count"], seal[0]["basin_count"], seal[0]["in_checklist"]), (3, 0, False))
@@ -292,6 +295,48 @@ class TestSwitchRelease(unittest.TestCase):
                                        str(tmp / "live.json"), "--version", "v0.2.0", "--out", str(tmp / "out.json")])
             self.assertEqual(rc, 0)
             self.assertEqual(json.loads((tmp / "out.json").read_text())["previous_version"], "v0.3.0")
+
+
+class TestSpeciesBins(unittest.TestCase):
+    def test_overview_zooms_carry_one_point_per_species_per_cell(self) -> None:
+        import gzip
+        import release_tiling
+        from pmtiles_writer import decode_mvt_tile  # type: ignore
+        pts = [(-122.0 + i * 1e-4, 45.0, {"gbifID": i + 1, "speciesKey": 7 if i < 5 else 9, "scientificName": "A b" if i < 5 else "C d",
+                                          "year": 2000 + i, "occurrenceID": f"o{i}"}) for i in range(8)]
+        pts.append((-122.0, 45.0, {"gbifID": 99, "speciesKey": 0, "scientificName": "Unknown", "year": 1990}))
+        tiles = release_tiling.build_occurrence_tiles(pts, 0, 3, 4, species_bins=True)
+        layers = decode_mvt_tile(gzip.decompress(tiles[(0, 0, 0)]))
+        sb = layers["species_bins"]["features"]
+        self.assertEqual(sorted((f["properties"]["speciesKey"], f["properties"]["count"]) for f in sb), [(7, 5), (9, 3)])
+        self.assertEqual(max(f["properties"]["max_year"] for f in sb), 2007)
+        self.assertIn("occurrence_bins", layers)
+        plain = release_tiling.build_occurrence_tiles(pts, 0, 3, 4)
+        self.assertNotIn("species_bins", decode_mvt_tile(gzip.decompress(plain[(0, 0, 0)])))
+
+
+class TestDatasetCatalog(unittest.TestCase):
+    def test_catalog_upsert_keeps_default_first(self) -> None:
+        import publish_release
+        cat = publish_release.update_dataset_catalog(None, "default", "Killifish: worldwide", "v0.3.0", now="t0")
+        cat = publish_release.update_dataset_catalog(cat, "willamette", "All species: Willamette", "v0.2.0", now="t1")
+        cat = publish_release.update_dataset_catalog(cat, "default", "", "v0.4.0", now="t2")
+        ids = [d["id"] for d in cat["datasets"]]
+        self.assertEqual(ids, ["default", "willamette"])
+        default = cat["datasets"][0]
+        self.assertEqual((default["title"], default["version"], default["manifest_path"]),
+                         ("Killifish: worldwide", "v0.4.0", "/releases/manifest.json"))
+        self.assertEqual(cat["datasets"][1]["manifest_path"], "/releases/datasets/willamette/manifest.json")
+        with self.assertRaises(ValueError):
+            publish_release.dataset_manifest_key("../etc")
+
+    def test_catalog_cli(self) -> None:
+        import publish_release
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "datasets.json"
+            self.assertEqual(publish_release.main(["catalog", "--dataset-id", "willamette", "--title", "W",
+                                                   "--version", "v0.2.0", "--out", str(out)]), 0)
+            self.assertEqual(json.loads(out.read_text())["datasets"][0]["id"], "willamette")
 
 
 class TestS3Publish(unittest.TestCase):

@@ -11,6 +11,7 @@ Skipped unless `playwright` (Python) and a Chrome/Chromium binary are available:
 
 from __future__ import annotations
 
+import base64
 import datetime
 import functools
 import json
@@ -102,11 +103,22 @@ class TestStage5BrowserFlows(unittest.TestCase):
                               {"key": 5204019, "canonicalName": "Oncorhynchus mykiss", "rank": "SPECIES", "family": "Salmonidae"},
                           ]))
 
+        # 1x1 transparent PNG for basemap tiles; an empty glyph range is valid for MapLibre.
+        tile_png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=")
+
+        def route_basemap(route):
+            route.fulfill(status=200, body=tile_png, headers={"content-type": "image/png", "access-control-allow-origin": "*"})
+
+        def route_glyphs(route):
+            route.fulfill(status=200, body=b"", headers={"content-type": "application/x-protobuf", "access-control-allow-origin": "*"})
+
         def new_page(browser, viewport, mobile=False):
             ctx = browser.new_context(viewport=viewport, is_mobile=mobile, has_touch=mobile, device_scale_factor=2 if mobile else 1)
             page = ctx.new_page()
             page.route(re.compile(r"https://unpkg\.com/.*"), route_vendor)
             page.route(re.compile(r"https://api\.gbif\.org/v1/species/suggest.*"), route_gbif)
+            page.route(re.compile(r"https://(tiles\.maps\.eox\.at|tile\.openstreetmap\.org)/.*"), route_basemap)
+            page.route(re.compile(r"https://demotiles\.maplibre\.org/font/.*"), route_glyphs)
             page.on("console", lambda m: errors.append(f"console.{m.type}: {m.text}") if m.type == "error" else None)
             page.on("pageerror", lambda e: errors.append(f"pageerror: {e}"))
             return ctx, page

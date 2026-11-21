@@ -42,6 +42,15 @@
         <aside class="sidebar" aria-label="Map Layers and Filters">
           <section class="panel-card">
             <h2>Layers</h2>
+            <div class="form-row hidden" id="dataset-row">
+              <label for="select-dataset">Dataset</label>
+              <select id="select-dataset"></select>
+              <small class="muted-note" id="dataset-description"></small>
+            </div>
+            <div class="form-row">
+              <label for="select-basemap">Background map</label>
+              <select id="select-basemap"></select>
+            </div>
             <label class="layer-toggle">
               <input id="toggle-basins" type="checkbox" checked />
               <span>
@@ -75,7 +84,14 @@
                 <option value="threatened_count">Threatened Records (CR/EN/VU/NT)</option>
               </select>
             </div>
-            <div class="form-row">
+            <div class="form-row taxon-search hidden" id="taxon-search-row">
+              <label for="taxon-search">Find family, genus, species or synonym</label>
+              <input id="taxon-search" type="search" autocomplete="off" spellcheck="false"
+                     placeholder="e.g. Aphanius, Goodeidae, mosquitofish"
+                     role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="taxon-results" />
+              <ul id="taxon-results" class="taxon-results hidden" role="listbox"></ul>
+            </div>
+            <div class="form-row" id="filter-species-row">
               <label for="filter-species">Filter Species</label>
               <select id="filter-species">
                 <option value="">All species</option>
@@ -118,6 +134,11 @@
               <p class="muted-note">Click any HydroBASINS polygon to view pre-aggregated counts and load its species shard.</p>
             </div>
             <div id="basin-shard-details"></div>
+          </section>
+
+          <section class="panel-card hidden" id="species-key-card">
+            <h2>Species Key</h2>
+            <div id="species-key"></div>
           </section>
 
           <section class="panel-card" id="occurrence-inspector">

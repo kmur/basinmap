@@ -1,0 +1,14 @@
+{
+  "schema": "basinmap-datasets/1",
+  "datasets": [
+    {
+      "id": "default",
+      "title": "Demo release",
+      "description": "",
+      "manifest_path": "/releases/manifest.json",
+      "version": "",
+      "default": true,
+      "updated_at": "2026-11-21T00:00:00Z"
+    }
+  ]
+}

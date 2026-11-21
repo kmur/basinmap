@@ -139,6 +139,7 @@ def build_species_outputs(
             "iucn": cat, "threatened": cat in threatened,
             "occurrence_count": int(occ.get("count", 0)), "basin_count": len(occ.get("basins", ())),
             "first_year": occ.get("firstYear") or 0, "last_year": occ.get("lastYear") or 0,
+            **({"bbox": [round(v, 4) for v in occ["bbox"]]} if occ.get("bbox") else {}),
             "in_checklist": True,
         })
     for key, occ in sorted(occurrences.items()):
@@ -152,6 +153,7 @@ def build_species_outputs(
             "iucn": cat, "threatened": cat in threatened,
             "occurrence_count": int(occ.get("count", 0)), "basin_count": len(occ.get("basins", ())),
             "first_year": occ.get("firstYear") or 0, "last_year": occ.get("lastYear") or 0,
+            **({"bbox": [round(v, 4) for v in occ["bbox"]]} if occ.get("bbox") else {}),
             "in_checklist": False,
         })
     rows.sort(key=lambda r: (r["family"], r["genus"], r["name"]))

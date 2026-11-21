@@ -46,6 +46,9 @@ on:
       download_key:
         description: "Reuse an existing GBIF download key instead of requesting a new one (optional)"
         default: ""
+      dataset_title:
+        description: "Title of this map in the dataset selector (blank keeps the current title)"
+        default: ""
       target:
         description: "Bucket to publish to"
         type: choice
@@ -211,6 +214,17 @@ jobs:
             echo "::warning::R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY not set; falling back to slow wrangler uploads"
             python3 data-pipeline/publish_release.py publish --root build-r2 --version "$VERSION" --mode wrangler --bucket "$BUCKET" --jobs 12 --retries 5
           fi
+
+      - name: Update the dataset catalog (releases/datasets.json)
+        if: inputs.publish
+        env:
+          TITLE: ${{ inputs.dataset_title }}
+        run: |
+          npx wrangler r2 object get "${BUCKET}/releases/datasets.json" --remote --file /tmp/datasets.json >/dev/null 2>&1 || true
+          python3 data-pipeline/publish_release.py catalog --catalog /tmp/datasets.json --dataset-id default \
+            --title "$TITLE" --version "$VERSION" --out /tmp/datasets.new.json
+          npx wrangler r2 object put "${BUCKET}/releases/datasets.json" --remote --file /tmp/datasets.new.json \
+            --cache-control "public, max-age=60, must-revalidate" --content-type application/json
 
       - name: Verify HTTP 206 range delivery
         if: inputs.publish

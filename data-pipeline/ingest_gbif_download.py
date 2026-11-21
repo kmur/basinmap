@@ -653,8 +653,12 @@ def build_release_from_download(
             if tot is None:
                 tot = species_totals[sk] = {"count": 0, "name": rec["species"], "family": rec["family"],
                                             "firstYear": None, "lastYear": None, "basins": set(),
-                                            "iucn": rec["iucnRedListCategory"]}
+                                            "iucn": rec["iucnRedListCategory"],
+                                            "bbox": [rec["lon"], rec["lat"], rec["lon"], rec["lat"]]}
             tot["count"] += 1
+            bb = tot["bbox"]
+            bb[0], bb[1] = min(bb[0], rec["lon"]), min(bb[1], rec["lat"])
+            bb[2], bb[3] = max(bb[2], rec["lon"]), max(bb[3], rec["lat"])
             if hybas_id:
                 tot["basins"].add(hybas_id)
             if yr:
@@ -668,7 +672,7 @@ def build_release_from_download(
             own_ids.append(rec["occurrenceID"])
         points.append((rec["lon"], rec["lat"], {
             "occurrenceID": rec["occurrenceID"], "gbifID": rec["gbifID"], "scientificName": rec["scientificName"],
-            "taxonKey": rec["taxonKey"], "eventDate": rec["eventDate"], "year": yr or 0,
+            "taxonKey": rec["taxonKey"], "speciesKey": sk or 0, "eventDate": rec["eventDate"], "year": yr or 0,
             "basisOfRecord": rec["basisOfRecord"], "hybas_id": hybas_id, "license": rec["license"],
             "institutionCode": rec["institutionCode"],
         }))
@@ -839,11 +843,14 @@ def build_release_from_download(
     del basin_tiles
     log("tiling occurrences")
     occ_tiles = build_occurrence_tiles(points, occurrence_zooms[0], occurrence_zooms[1], occurrence_zooms[2],
-                                       max_points_per_tile=max_points_per_tile)
+                                       max_points_per_tile=max_points_per_tile, species_bins=True)
     occ_md = _tile_layer_metadata("GBIF Occurrences", "Aggregated bins (overview) and GBIF records (detail)",
                                   attribution, "occurrences", OCCURRENCE_POINT_FIELDS)
     occ_md["vector_layers"].append({"id": "occurrence_bins", "description": "Record counts per grid cell",
                                     "fields": {"count": "Number", "max_year": "Number"}})
+    occ_md["vector_layers"].append({"id": "species_bins", "description": "Record counts per species per grid cell",
+                                    "fields": {"speciesKey": "Number", "scientificName": "String",
+                                               "count": "Number", "max_year": "Number"}})
     occ_parts = write_partitioned_pmtiles(occ_tiles, staging_dir, "occurrences", url_prefix, occ_md,
                                           max_bytes=max_archive_bytes, center_zoom=occurrence_zooms[1])
     del occ_tiles
@@ -1011,6 +1018,9 @@ def build_release_from_download(
             "basins": layer_spec(basin_parts, "basins", basins_geojson_path, basin_zooms),
             "occurrences": layer_spec(occ_parts, "occurrences", occ_geojson_path, (occurrence_zooms[0], occurrence_zooms[2])),
             "occurrence_bins_max_zoom": occurrence_zooms[1] - 1,
+            "occurrence_point_fields": sorted(OCCURRENCE_POINT_FIELDS),
+            "species_bins": {"source_layer": "species_bins", "max_zoom": occurrence_zooms[1] - 1,
+                             "fields": ["speciesKey", "scientificName", "count", "max_year"]},
             "basin_shards_format": "sqlite" if use_sqlite else "json",
             "basin_shards_template": shard_template,
             "basin_shards_index": f"{url_prefix}/basins/index.json",

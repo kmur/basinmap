@@ -14,6 +14,29 @@ import {
   resolveDataUrl,
 } from "./types.js";
 import { handleMapClickForContrib, initContributions } from "./contrib.js";
+import {
+  BASEMAPS,
+  DEFAULT_BASEMAP,
+  DatasetEntry,
+  GLYPHS_URL,
+  KeyEntry,
+  LETTER_FONT,
+  SpeciesRow,
+  TaxonEntry,
+  assignSpeciesKey,
+  basemapLayers,
+  basemapSources,
+  buildTaxonEntries,
+  colorExpression,
+  groupBySpecies,
+  letterExpression,
+  normalizeCatalog,
+  pickDataset,
+  searchTaxa,
+  selectionBounds,
+  selectionFilter,
+  synonymsByKey,
+} from "./explore.js";
 
 interface AppState {
   publicDataUrl: string;
@@ -36,8 +59,20 @@ interface AppState {
     basinsOutline: string[];
     occurrences: string[];
     bins: string[];
+    letters: string[];
+    speciesBins: string[];
   };
   snapshotOwnIds: Set<string>;
+  basemap: string;
+  datasets: DatasetEntry[];
+  dataset: DatasetEntry | null;
+  speciesRows: SpeciesRow[];
+  taxonEntries: TaxonEntry[];
+  synonyms: Map<number, string[]>;
+  selection: TaxonEntry | null;
+  keyEntries: KeyEntry[];
+  hiddenSpecies: Set<number>;
+  useSpeciesKey: boolean;
 }
 
 const state: AppState = {
@@ -56,9 +91,21 @@ const state: AppState = {
   showApproved: true,
   mapInstance: null,
   usingMapLibre: false,
-  mapLayerIds: { basinsFill: [], basinsOutline: [], occurrences: [], bins: [] },
+  mapLayerIds: { basinsFill: [], basinsOutline: [], occurrences: [], bins: [], letters: [], speciesBins: [] },
   snapshotOwnIds: new Set<string>(),
+  basemap: DEFAULT_BASEMAP,
+  datasets: [],
+  dataset: null,
+  speciesRows: [],
+  taxonEntries: [],
+  synonyms: new Map<number, string[]>(),
+  selection: null,
+  keyEntries: [],
+  hiddenSpecies: new Set<number>(),
+  useSpeciesKey: false,
 };
+
+const OCCURRENCE_COLOR = "#0284c7";
 
 /** Log-scaled basin colour ramp so real release counts (1 to 100k+) stay legible. */
 function basinFillExpression(): any[] {
@@ -450,7 +497,8 @@ function initMapLibreIfAvailable(): boolean {
     const rasterLayers: any[] = [];
     const basinLayers: any[] = [];
     const occLayers: any[] = [];
-    const ids = { basinsFill: [] as string[], basinsOutline: [] as string[], occurrences: [] as string[], bins: [] as string[] };
+    const ids = { basinsFill: [] as string[], basinsOutline: [] as string[], occurrences: [] as string[], bins: [] as string[], letters: [] as string[], speciesBins: [] as string[] };
+    const speciesBinsSpec: any = (manifest.layers as any).species_bins;
     const sourceSpec = (path: string, part: { min_zoom: number; max_zoom: number; bounds?: number[] }) => {
       const spec: any = {
         url: `pmtiles://${resolveDataUrl(state.publicDataUrl, path)}`,
@@ -500,8 +548,30 @@ function initMapLibreIfAvailable(): boolean {
       sources[sid] = { type: "vector", ...sourceSpec(part.path, part) };
       const binId = `occurrence-bins-${i}`;
       const occId = i === 0 ? "occurrences-circle" : `occurrences-circle-${i}`;
+      const letterId = `occurrences-letter-${i}`;
       ids.bins.push(binId);
       ids.occurrences.push(occId);
+      ids.letters.push(letterId);
+      if (speciesBinsSpec) {
+        // Per-species overview points (Stage 9 releases): shown instead of count bins while searching.
+        const sbId = `species-bins-${i}`;
+        ids.speciesBins.push(sbId);
+        occLayers.push({
+          id: sbId,
+          type: "circle",
+          source: sid,
+          "source-layer": speciesBinsSpec.source_layer || "species_bins",
+          maxzoom: (speciesBinsSpec.max_zoom ?? 8) + 1,
+          layout: { visibility: "none" },
+          paint: {
+            "circle-radius": ["interpolate", ["linear"], ["ln", ["+", 1, ["get", "count"]]], 0, 3.5, 8, 11],
+            "circle-color": OCCURRENCE_COLOR,
+            "circle-opacity": 0.85,
+            "circle-stroke-color": "#ffffff",
+            "circle-stroke-width": 0.8,
+          },
+        });
+      }
       occLayers.push(
         {
           id: binId,
@@ -523,10 +593,27 @@ function initMapLibreIfAvailable(): boolean {
           "source-layer": "occurrences",
           paint: {
             "circle-radius": ["interpolate", ["linear"], ["zoom"], 8, 2.5, 13, 5],
-            "circle-color": "#0284c7",
+            "circle-color": OCCURRENCE_COLOR,
             "circle-stroke-color": "#ffffff",
             "circle-stroke-width": 1.2,
           },
+        },
+        {
+          // Species-key letters (A, B, C...) over points once zoomed in; hidden until a selection is active.
+          id: letterId,
+          type: "symbol",
+          source: sid,
+          "source-layer": "occurrences",
+          minzoom: 9,
+          layout: {
+            visibility: "none",
+            "text-field": "",
+            "text-font": LETTER_FONT,
+            "text-size": 9,
+            "text-allow-overlap": true,
+            "text-ignore-placement": true,
+          },
+          paint: { "text-color": "#ffffff" },
         }
       );
     });
@@ -546,13 +633,15 @@ function initMapLibreIfAvailable(): boolean {
       fitBoundsOptions: { padding: 36 },
       style: {
         version: 8,
-        sources,
+        glyphs: GLYPHS_URL,
+        sources: { ...basemapSources(), ...sources },
         layers: [
           {
             id: "background",
             type: "background",
             paint: { "background-color": "#d9e8f2" },
           },
+          ...basemapLayers(state.basemap),
           ...rasterLayers,
           ...basinLayers,
           ...occLayers,
@@ -612,10 +701,22 @@ function initMapLibreIfAvailable(): boolean {
       }
     });
 
-    map.on("error", () => {
-      // Fallback cleanly to interactive SVG if WebGL fails in headless environments.
+    // Only a failure before the first render (e.g. no WebGL) switches to the SVG fallback. Tile and
+    // glyph errors (a basemap provider being slow or offline) must not tear down a working map.
+    let mapLoaded = false;
+    map.on("load", () => {
+      mapLoaded = true;
+      syncMapFiltersAndLayers();
+    });
+    map.on("error", (e: any) => {
+      if (mapLoaded || (e && (e.sourceId || e.tile))) return;
       switchToSvgFallback("MapLibre runtime error — interactive SVG active");
     });
+
+    map.addControl(new maplibre.NavigationControl({ visualizePitch: false }), "top-right");
+    map.addControl(new maplibre.FullscreenControl(), "top-right");
+    map.addControl(new maplibre.ScaleControl({ unit: "metric", maxWidth: 120 }), "bottom-left");
+    attachSpeciesTooltip(map, maplibre, [...ids.occurrences, ...ids.speciesBins, "approved-circle"]);
 
     state.mapInstance = map;
     state.usingMapLibre = true;
@@ -680,22 +781,52 @@ function syncMapFiltersAndLayers(): void {
     if (state.selectedSpecies) {
       filterExpr.push(["==", ["get", "scientificName"], state.selectedSpecies]);
     }
+    const taxonFilter = selectionFilter(state.keyEntries, state.hiddenSpecies, state.useSpeciesKey);
+    // Approved overlay points carry scientificName only, so they always use name matching.
+    const approvedTaxonFilter = selectionFilter(state.keyEntries, state.hiddenSpecies, false);
+    const filtering = Boolean(state.selectedSpecies || taxonFilter);
+    const occFilter = taxonFilter ? [...filterExpr, taxonFilter] : filterExpr;
+    const approvedFilter = approvedTaxonFilter ? [...filterExpr, approvedTaxonFilter] : filterExpr;
+    const keyed = state.keyEntries.length > 0;
 
     for (const layerId of state.mapLayerIds.occurrences) {
       if (map.getLayer(layerId)) {
         map.setLayoutProperty(layerId, "visibility", occVis);
-        map.setFilter(layerId, filterExpr);
+        map.setFilter(layerId, occFilter);
+        map.setPaintProperty(layerId, "circle-color", colorExpression(state.keyEntries, state.useSpeciesKey, OCCURRENCE_COLOR));
+        map.setPaintProperty(layerId, "circle-radius", keyed
+          ? ["interpolate", ["linear"], ["zoom"], 4, 3.5, 9, 6, 13, 8]
+          : ["interpolate", ["linear"], ["zoom"], 8, 2.5, 13, 5]);
       }
     }
-    // Aggregated bins carry counts only; hide them while a species filter is active.
+    for (const layerId of state.mapLayerIds.letters) {
+      if (map.getLayer(layerId)) {
+        map.setLayoutProperty(layerId, "visibility", keyed && state.showOccurrences ? "visible" : "none");
+        map.setLayoutProperty(layerId, "text-field", letterExpression(state.keyEntries, state.useSpeciesKey));
+        map.setFilter(layerId, occFilter);
+      }
+    }
+    const speciesBinFilter = selectionFilter(state.keyEntries, state.hiddenSpecies, true);
+    for (const layerId of state.mapLayerIds.speciesBins) {
+      if (map.getLayer(layerId)) {
+        map.setLayoutProperty(layerId, "visibility", keyed && state.showOccurrences ? "visible" : "none");
+        if (speciesBinFilter) map.setFilter(layerId, speciesBinFilter);
+        map.setPaintProperty(layerId, "circle-color", colorExpression(state.keyEntries, true, OCCURRENCE_COLOR));
+      }
+    }
+    // Aggregated bins carry counts only; hide them while a species/taxon filter is active.
     for (const layerId of state.mapLayerIds.bins) {
       if (map.getLayer(layerId)) {
-        map.setLayoutProperty(layerId, "visibility", state.selectedSpecies ? "none" : occVis);
+        map.setLayoutProperty(layerId, "visibility", filtering ? "none" : occVis);
       }
     }
     if (map.getLayer("approved-circle")) {
       map.setLayoutProperty("approved-circle", "visibility", appVis);
-      map.setFilter("approved-circle", filterExpr);
+      map.setFilter("approved-circle", approvedFilter);
+    }
+    for (const b of BASEMAPS) {
+      const id = `basemap-${b.id}`;
+      if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", b.id === state.basemap ? "visible" : "none");
     }
   } else {
     renderSvgMapFallback();
@@ -755,6 +886,233 @@ function bindControls(): void {
   }
 }
 
+// ------------------------------------------------------------------------------------------------
+// Stage 9: taxon search, species key, grouped tooltips, basemaps, datasets
+// ------------------------------------------------------------------------------------------------
+
+function attachSpeciesTooltip(map: any, maplibre: any, layerIds: string[]): void {
+  const popup = new maplibre.Popup({ closeButton: false, closeOnClick: false, offset: 10, className: "species-tip" });
+  const onMove = (e: any) => {
+    const box = [[e.point.x - 6, e.point.y - 6], [e.point.x + 6, e.point.y + 6]];
+    const layers = layerIds.filter((id) => map.getLayer(id));
+    const feats = layers.length ? map.queryRenderedFeatures(box, { layers }) : [];
+    if (!feats.length) {
+      popup.remove();
+      map.getCanvas().style.cursor = "";
+      return;
+    }
+    map.getCanvas().style.cursor = "pointer";
+    const groups = groupBySpecies(feats, state.keyEntries).slice(0, 8);
+    const total = groups.reduce((acc: number, g: any) => acc + g.count, 0);
+    const rows = groups
+      .map((g: any) => `<li><span class="key-dot" style="background:${g.color}">${escapeHtml(g.letter)}</span><em>${escapeHtml(g.label)}</em> <span class="muted">×${g.count}</span></li>`)
+      .join("");
+    popup
+      .setLngLat(e.lngLat)
+      .setHTML(`<div class="tip-head">${total} record${total === 1 ? "" : "s"} here</div><ul class="tip-list">${rows}</ul>`)
+      .addTo(map);
+  };
+  map.on("mousemove", onMove);
+  map.on("mouseout", () => popup.remove());
+}
+
+function selectedRows(): SpeciesRow[] {
+  if (!state.selection) return [];
+  const keys = new Set<number>(state.selection.speciesKeys);
+  return state.speciesRows.filter((r) => keys.has(r.key));
+}
+
+function applySelection(entry: TaxonEntry | null): void {
+  state.selection = entry;
+  state.hiddenSpecies = new Set<number>();
+  const rows = selectedRows();
+  state.keyEntries = entry ? assignSpeciesKey(rows, state.synonyms) : [];
+  const input = getEl("taxon-search");
+  if (input) input.value = entry ? entry.label : "";
+  renderSpeciesKey();
+  syncMapFiltersAndLayers();
+  if (entry) fitToSelection();
+}
+
+function fitToSelection(): void {
+  const map = state.mapInstance;
+  if (!state.usingMapLibre || !map) return;
+  const bb = state.selection ? selectionBounds(selectedRows()) : null;
+  const target = bb || (state.manifest ? state.manifest.spatial_coverage.bbox : null);
+  if (!target) return;
+  const pad = bb && bb[0] === bb[2] && bb[1] === bb[3] ? 0.5 : 0;
+  map.fitBounds([[target[0] - pad, target[1] - pad], [target[2] + pad, target[3] + pad]], { padding: 48, maxZoom: 9, duration: 800 });
+}
+
+function renderSpeciesKey(): void {
+  const card = getEl("species-key-card");
+  const body = getEl("species-key");
+  if (!card || !body) return;
+  if (!state.selection) {
+    card.classList.add("hidden");
+    body.innerHTML = "";
+    return;
+  }
+  card.classList.remove("hidden");
+  const rows = selectedRows();
+  const truncated = rows.length > state.keyEntries.length;
+  const items = state.keyEntries
+    .map((k) => {
+      const off = state.hiddenSpecies.has(k.key);
+      return `<li><button type="button" class="key-row${off ? " off" : ""}" data-key="${k.key}" aria-pressed="${!off}">
+        <span class="key-dot" style="background:${k.color}">${k.letter}</span>
+        <em>${escapeHtml(k.name)}</em><span class="muted">${k.count.toLocaleString("en-US")}</span></button></li>`;
+    })
+    .join("");
+  body.innerHTML = `
+    <p class="muted-note"><strong>${escapeHtml(state.selection.label)}</strong> · ${escapeHtml(state.selection.kind)} ·
+      ${rows.length} species${truncated ? ` (key shows the ${state.keyEntries.length} most recorded)` : ""}</p>
+    ${state.mapLayerIds.speciesBins.length ? "" : `<p class="muted-note">This release shows individual records from zoom ${(state.manifest?.layers.occurrence_bins_max_zoom ?? 8) + 1}; zoom in to see them.</p>`}
+    <ul class="species-key">${items}</ul>
+    <div class="key-actions">
+      <button type="button" class="btn btn-ghost" id="key-show-all">Show all</button>
+      <button type="button" class="btn btn-ghost" id="key-fit">Zoom to results</button>
+      <button type="button" class="btn btn-ghost" id="key-clear">Clear</button>
+    </div>`;
+  body.querySelectorAll(".key-row").forEach((btn: any) => {
+    btn.addEventListener("click", () => {
+      const key = Number(btn.getAttribute("data-key"));
+      if (state.hiddenSpecies.has(key)) state.hiddenSpecies.delete(key);
+      else state.hiddenSpecies.add(key);
+      renderSpeciesKey();
+      syncMapFiltersAndLayers();
+    });
+  });
+  getEl("key-show-all")?.addEventListener("click", () => {
+    state.hiddenSpecies = new Set<number>();
+    renderSpeciesKey();
+    syncMapFiltersAndLayers();
+  });
+  getEl("key-fit")?.addEventListener("click", () => fitToSelection());
+  getEl("key-clear")?.addEventListener("click", () => applySelection(null));
+}
+
+function initTaxonSearch(): void {
+  const input = getEl("taxon-search");
+  const list = getEl("taxon-results");
+  const row = getEl("taxon-search-row");
+  if (!input || !list) return;
+  if (!state.taxonEntries.length) {
+    if (row) row.classList.add("hidden");
+    return;
+  }
+  if (row) row.classList.remove("hidden");
+  let results: TaxonEntry[] = [];
+  let active = -1;
+  const close = () => {
+    list.classList.add("hidden");
+    list.innerHTML = "";
+    input.setAttribute("aria-expanded", "false");
+    active = -1;
+  };
+  const choose = (i: number) => {
+    if (results[i]) applySelection(results[i]);
+    close();
+  };
+  const render = () => {
+    if (!results.length) {
+      close();
+      return;
+    }
+    list.innerHTML = results
+      .map((r, i) => `<li role="option" id="taxon-opt-${i}" aria-selected="${i === active}" data-i="${i}" class="${i === active ? "active" : ""}">
+          <span class="kind kind-${r.kind}">${escapeHtml(r.kind)}</span>
+          <span class="label">${r.kind === "family" || r.kind === "common" ? escapeHtml(r.label) : `<em>${escapeHtml(r.label)}</em>`}</span>
+          <span class="detail">${escapeHtml(r.detail)}</span></li>`)
+      .join("");
+    list.classList.remove("hidden");
+    input.setAttribute("aria-expanded", "true");
+    list.querySelectorAll("li").forEach((li: any) => {
+      li.addEventListener("mousedown", (ev: any) => {
+        ev.preventDefault();
+        choose(Number(li.getAttribute("data-i")));
+      });
+    });
+  };
+  input.addEventListener("input", () => {
+    results = searchTaxa(state.taxonEntries, input.value, 12);
+    active = results.length ? 0 : -1;
+    render();
+    if (!input.value.trim() && state.selection) applySelection(null);
+  });
+  input.addEventListener("keydown", (ev: any) => {
+    if (ev.key === "ArrowDown" && results.length) {
+      active = (active + 1) % results.length;
+      render();
+      ev.preventDefault();
+    } else if (ev.key === "ArrowUp" && results.length) {
+      active = (active - 1 + results.length) % results.length;
+      render();
+      ev.preventDefault();
+    } else if (ev.key === "Enter" && active >= 0) {
+      choose(active);
+      ev.preventDefault();
+    } else if (ev.key === "Escape") {
+      close();
+    }
+  });
+  input.addEventListener("blur", () => setTimeout(close, 120));
+}
+
+async function loadTaxonomy(manifest: ReleaseManifest): Promise<void> {
+  const layers: any = manifest.layers;
+  state.useSpeciesKey = Array.isArray(layers.occurrence_point_fields) && layers.occurrence_point_fields.includes("speciesKey");
+  if (!layers.species_index) return;
+  const [index, aliases] = await Promise.all([
+    fetchJsonWithTimeout(resolveDataUrl(state.publicDataUrl, layers.species_index), 15000).catch(() => null),
+    layers.taxonomy_aliases
+      ? fetchJsonWithTimeout(resolveDataUrl(state.publicDataUrl, layers.taxonomy_aliases), 15000).catch(() => null)
+      : Promise.resolve(null),
+  ]);
+  if (!index) return;
+  state.speciesRows = Array.isArray(index.species) ? index.species : [];
+  state.synonyms = synonymsByKey(aliases, index);
+  state.taxonEntries = buildTaxonEntries(index, aliases);
+}
+
+function renderDatasetSelector(): void {
+  const row = getEl("dataset-row");
+  const select = getEl("select-dataset");
+  if (!row || !select) return;
+  if (state.datasets.length < 2) {
+    row.classList.add("hidden");
+    return;
+  }
+  row.classList.remove("hidden");
+  select.innerHTML = state.datasets
+    .map((d) => `<option value="${escapeHtml(d.id)}"${state.dataset && d.id === state.dataset.id ? " selected" : ""}>${escapeHtml(d.title)}</option>`)
+    .join("");
+  const desc = getEl("dataset-description");
+  if (desc) desc.textContent = state.dataset ? state.dataset.description : "";
+  select.addEventListener("change", () => {
+    const url = new URL(window.location.href);
+    if (select.value === "default") url.searchParams.delete("dataset");
+    else url.searchParams.set("dataset", select.value);
+    window.location.assign(url.toString());
+  });
+}
+
+function renderBasemapSelector(): void {
+  const select = getEl("select-basemap");
+  if (!select) return;
+  select.innerHTML = BASEMAPS.map((b) => `<option value="${b.id}"${b.id === state.basemap ? " selected" : ""}>${escapeHtml(b.label)}</option>`).join("")
+    + `<option value="none"${state.basemap === "none" ? " selected" : ""}>None (plain)</option>`;
+  select.addEventListener("change", () => {
+    state.basemap = select.value;
+    try {
+      window.localStorage.setItem("bm.basemap", state.basemap);
+    } catch (_err) {
+      // Storage can be unavailable (private mode); the choice still applies for this visit.
+    }
+    syncMapFiltersAndLayers();
+  });
+}
+
 function populateSpeciesFilter(): void {
   const select = getEl("filter-species");
   if (!select) return;
@@ -808,10 +1166,25 @@ async function bootstrap(): Promise<void> {
     apiStatus.online
   ).catch(() => undefined);
 
-  const manifestUrl = resolveDataUrl(state.publicDataUrl, "/releases/manifest.json");
+  try {
+    const saved = window.localStorage.getItem("bm.basemap");
+    if (saved && (saved === "none" || BASEMAPS.some((b) => b.id === saved))) state.basemap = saved;
+  } catch (_err) {
+    // Storage unavailable: keep the default basemap.
+  }
+  renderBasemapSelector();
+
+  // Dataset catalog (optional): several datasets can be offered side by side.
+  const catalog = await fetchJsonWithTimeout(resolveDataUrl(state.publicDataUrl, "/releases/datasets.json"), 4000).catch(() => null);
+  state.datasets = normalizeCatalog(catalog);
+  state.dataset = pickDataset(state.datasets, new URLSearchParams(window.location.search).get("dataset"));
+  renderDatasetSelector();
+
+  const manifestUrl = resolveDataUrl(state.publicDataUrl, state.dataset ? state.dataset.manifest_path : "/releases/manifest.json");
   const manifest: ReleaseManifest = await fetchJsonWithTimeout(manifestUrl, 5000);
   state.manifest = manifest;
   applyReleaseYearRange(manifest);
+  const taxonomyReady = loadTaxonomy(manifest).then(() => initTaxonSearch()).catch(() => undefined);
 
   const versionBadge = getEl("badge-version");
   const doiBadge = getEl("badge-doi");
@@ -899,8 +1272,13 @@ async function bootstrap(): Promise<void> {
   state.deduplicatedCount = dedup.duplicateCount;
 
   populateSpeciesFilter();
+  const speciesRow = getEl("filter-species-row");
+  if (speciesRow && state.snapshotOccurrences.length === 0 && state.approvedOccurrences.length === 0) {
+    speciesRow.classList.add("hidden");
+  }
 
   const mlReady = initMapLibreIfAvailable();
+  await taxonomyReady;
   if (!mlReady) {
     switchToSvgFallback("Interactive Vector SVG (PMTiles-backed)");
   }

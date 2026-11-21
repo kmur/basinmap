@@ -29,6 +29,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Any, Dict, List, Optional, Sequence, Tuple
 
@@ -263,6 +264,40 @@ def make_root_manifest(release_manifest: Dict[str, Any], live_manifest: Optional
     if live and live != version:
         root["previous_version"] = live
     return root
+
+
+DATASET_CATALOG_KEY = "releases/datasets.json"
+
+
+def dataset_manifest_key(dataset_id: str) -> str:
+    """Root manifest key for a dataset; the default dataset keeps ``releases/manifest.json``."""
+    if dataset_id in ("", "default"):
+        return "releases/manifest.json"
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,40}", dataset_id):
+        raise ValueError(f"dataset id {dataset_id!r} must be lower-case letters, digits and dashes")
+    return f"releases/datasets/{dataset_id}/manifest.json"
+
+
+def update_dataset_catalog(catalog: Optional[Dict[str, Any]], dataset_id: str, title: str, version: str,
+                           description: str = "", now: Optional[str] = None) -> Dict[str, Any]:
+    """Upsert one dataset in ``releases/datasets.json`` (Stage 9 dataset selector).
+
+    The default dataset (``releases/manifest.json``) is always listed first; others follow by title.
+    """
+    did = dataset_id or "default"
+    entries = {e["id"]: e for e in (catalog or {}).get("datasets", []) if isinstance(e, dict) and e.get("id")}
+    prev = entries.get(did, {})
+    entries[did] = {
+        "id": did,
+        "title": title or prev.get("title") or ("Live release" if did == "default" else did),
+        "description": description or prev.get("description", ""),
+        "manifest_path": "/" + dataset_manifest_key(did),
+        "version": version,
+        "default": did == "default",
+        "updated_at": now or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    ordered = sorted(entries.values(), key=lambda e: (not e["default"], e["title"].lower()))
+    return {"schema": "basinmap-datasets/1", "datasets": ordered}
 
 
 def publish_release(
@@ -770,6 +805,14 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     p_root.add_argument("--version", required=True)
     p_root.add_argument("--out", type=Path, required=True)
 
+    p_cat = subparsers.add_parser("catalog", help="Upsert a dataset in releases/datasets.json")
+    p_cat.add_argument("--catalog", type=Path, default=None, help="current datasets.json (optional)")
+    p_cat.add_argument("--dataset-id", default="default")
+    p_cat.add_argument("--title", default="")
+    p_cat.add_argument("--description", default="")
+    p_cat.add_argument("--version", required=True)
+    p_cat.add_argument("--out", type=Path, required=True)
+
     p_ver = subparsers.add_parser("verify-http", help="Verify 206 byte-range, ETag, Cache-Control, and CORS")
     p_ver.add_argument("--root", type=Path, default=SCRIPT_DIR.parent / "public-r2")
     p_ver.add_argument("--base-url", default=None, help="Live R2 custom domain URL (e.g. https://data.basinmap.org)")
@@ -796,6 +839,18 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             retries=args.retries,
         )
         print(json.dumps(result, indent=2))
+        return 0
+
+    if args.command == "catalog":
+        current = None
+        if args.catalog and args.catalog.exists():
+            try:
+                current = json.loads(args.catalog.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                current = None
+        cat = update_dataset_catalog(current, args.dataset_id, args.title, args.version, args.description)
+        args.out.write_text(json.dumps(cat, indent=2) + "\n", encoding="utf-8")
+        print(json.dumps(cat, indent=2))
         return 0
 
     if args.command == "make-root":

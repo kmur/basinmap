@@ -1,8 +1,12 @@
 name: Switch live release
 
-# Point the live site at a release that is already in the bucket (no rebuild). Takes effect for
-# visitors within about a minute (manifest.json is cached for 60 s). Undo by running it again with
-# the previous version; the new manifest records what was live as previous_version.
+# Point a dataset at a release that is already in the bucket (no rebuild). Takes effect for
+# visitors within about a minute (manifests are cached for 60 s). Undo by running it again with the
+# previous version; the new manifest records what was live as previous_version.
+#
+# dataset "default" is the site's main map (releases/manifest.json). Any other id (e.g.
+# "willamette") adds or updates a selectable dataset (releases/datasets/<id>/manifest.json) in the
+# map's dataset selector, listed in releases/datasets.json.
 
 on:
   workflow_dispatch:
@@ -13,8 +17,14 @@ on:
         options: [staging, production]
         default: staging
       version:
-        description: "Release to make live (e.g. v0.2.0 or v0.3.0)"
+        description: "Release to use (e.g. v0.2.0 or v0.4.0)"
         required: true
+      dataset:
+        description: "Dataset id: 'default' = main map; or e.g. 'willamette' for an extra selectable dataset"
+        default: "default"
+      title:
+        description: "Dataset title in the selector (blank keeps the current title)"
+        default: ""
 
 permissions:
   contents: read
@@ -60,23 +70,35 @@ jobs:
           fi
 
       - name: Fetch the release and the live manifest
+        env:
+          DATASET: ${{ inputs.dataset }}
         run: |
           mkdir -p /tmp/switch
+          KEY=$(python3 -c 'import sys;sys.path.insert(0,"data-pipeline");import publish_release as p;print(p.dataset_manifest_key(sys.argv[1]))' "${DATASET:-default}")
+          echo "MANIFEST_KEY=$KEY" >> "$GITHUB_ENV"
           if ! npx wrangler r2 object get "${BUCKET}/releases/${VERSION}/release_manifest.json" --remote --file /tmp/switch/release.json >/dev/null 2>&1; then
             echo "::error::${VERSION} is not published in ${BUCKET}. Build it with 'Build data release' first."
             exit 1
           fi
-          npx wrangler r2 object get "${BUCKET}/releases/manifest.json" --remote --file /tmp/switch/live.json >/dev/null 2>&1 || true
+          npx wrangler r2 object get "${BUCKET}/${KEY}" --remote --file /tmp/switch/live.json >/dev/null 2>&1 || true
+          npx wrangler r2 object get "${BUCKET}/releases/datasets.json" --remote --file /tmp/switch/datasets.json >/dev/null 2>&1 || true
           [ -f /tmp/switch/live.json ] && python3 -c 'import json;print("live now:", json.load(open("/tmp/switch/live.json"))["current_version"])'
 
-      - name: Write and upload the new root manifest
+      - name: Write and upload the new manifest and dataset catalog
+        env:
+          DATASET: ${{ inputs.dataset }}
+          TITLE: ${{ inputs.title }}
         run: |
           python3 data-pipeline/publish_release.py make-root --release-manifest /tmp/switch/release.json \
             --live-manifest /tmp/switch/live.json --version "$VERSION" --out /tmp/switch/manifest.json
-          npx wrangler r2 object put "${BUCKET}/releases/manifest.json" --remote --file /tmp/switch/manifest.json \
+          npx wrangler r2 object put "${BUCKET}/${MANIFEST_KEY}" --remote --file /tmp/switch/manifest.json \
+            --cache-control "public, max-age=60, must-revalidate" --content-type application/json
+          python3 data-pipeline/publish_release.py catalog --catalog /tmp/switch/datasets.json \
+            --dataset-id "${DATASET:-default}" --title "$TITLE" --version "$VERSION" --out /tmp/switch/datasets.new.json
+          npx wrangler r2 object put "${BUCKET}/releases/datasets.json" --remote --file /tmp/switch/datasets.new.json \
             --cache-control "public, max-age=60, must-revalidate" --content-type application/json
           {
-            echo "### ${SITE} now serves ${VERSION}"
+            echo "### ${SITE}: dataset '${DATASET:-default}' now serves ${VERSION}"
             echo
             echo "Visitors see it within about a minute. To undo, run this workflow again with the previous version."
           } >> "$GITHUB_STEP_SUMMARY"

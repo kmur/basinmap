@@ -69,6 +69,7 @@ OCCURRENCE_POINT_FIELDS = {
     "gbifID": "Number",
     "scientificName": "String",
     "taxonKey": "Number",
+    "speciesKey": "Number",  # accepted species (synonyms resolved); Stage 9 search filters on it
     "eventDate": "String",
     "year": "Number",
     "basisOfRecord": "String",
@@ -166,6 +167,8 @@ def build_occurrence_tiles(
     max_zoom: int,
     max_points_per_tile: int = 4000,
     bin_shift: int = 6,
+    species_bins: bool = False,
+    species_bin_shift: int = 4,
 ) -> Dict[Tuple[int, int, int], bytes]:
     """Aggregated ``occurrence_bins`` below ``point_min_zoom``; record-level ``occurrences`` above.
 
@@ -174,6 +177,11 @@ def build_occurrence_tiles(
     one feature per occupied tile pixel (``count`` = records at that pixel); below
     ``max_zoom`` locations are thinned deterministically (by hashed gbifID) to
     ``max_points_per_tile``; ``max_zoom`` keeps every distinct location.
+
+    With ``species_bins`` the overview zooms also carry a ``species_bins`` layer: one point per
+    (speciesKey, 1/(2**species_bin_shift) tile cell) with ``speciesKey``, ``scientificName``,
+    ``count`` and ``max_year``, so a species search can show every species' footprint at world
+    scale (Stage 9). Records not identified to species are left out of this layer.
     """
     tiles: Dict[Tuple[int, int, int], bytes] = {}
     world = [(lon_to_tile_x(lon, 0), lat_to_tile_y(lat, 0)) for lon, lat, _ in points]
@@ -201,8 +209,40 @@ def build_occurrence_tiles(
                     "properties": {"count": count, "max_year": max_year},
                 }
             )
-        for (tx, ty), feats in per_tile.items():
-            tiles[(z, tx, ty)] = gzip.compress(encode_mvt_tile({"occurrence_bins": feats}), mtime=0)
+        layers_by_tile: Dict[Tuple[int, int], Dict[str, List[Dict[str, Any]]]] = defaultdict(dict)
+        for key, feats in per_tile.items():
+            layers_by_tile[key]["occurrence_bins"] = feats
+        if species_bins:
+            sz = z + species_bin_shift
+            sscale = float(1 << sz)
+            sbins: Dict[Tuple[int, int, int], List[Any]] = {}
+            for (u, v), (_, _, props) in zip(world, points):
+                sk = int(props.get("speciesKey") or 0)
+                if not sk:
+                    continue
+                cell = (sk, min(int(u * sscale), (1 << sz) - 1), min(int(v * sscale), (1 << sz) - 1))
+                b = sbins.get(cell)
+                if b is None:
+                    sbins[cell] = [1, int(props.get("year") or 0), props.get("scientificName", "")]
+                else:
+                    b[0] += 1
+                    b[1] = max(b[1], int(props.get("year") or 0))
+            scell_px = DEFAULT_EXTENT >> species_bin_shift
+            sper_tile: Dict[Tuple[int, int], List[Dict[str, Any]]] = defaultdict(list)
+            for (sk, cx, cy), (count, max_year, name) in sbins.items():
+                tx, ty = cx >> species_bin_shift, cy >> species_bin_shift
+                lx = (cx - (tx << species_bin_shift)) * scell_px + scell_px // 2
+                ly = (cy - (ty << species_bin_shift)) * scell_px + scell_px // 2
+                sper_tile[(tx, ty)].append({
+                    "id": len(sper_tile[(tx, ty)]) + 1,
+                    "geom_type": GEOM_POINT,
+                    "geometry": [(lx, ly)],
+                    "properties": {"speciesKey": sk, "scientificName": name, "count": count, "max_year": max_year},
+                })
+            for key, feats in sper_tile.items():
+                layers_by_tile[key]["species_bins"] = feats
+        for (tx, ty), layers in layers_by_tile.items():
+            tiles[(z, tx, ty)] = gzip.compress(encode_mvt_tile(layers), mtime=0)
 
     for z in range(max(min_zoom, point_min_zoom), max_zoom + 1):
         scale = float(1 << z)
