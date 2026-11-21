@@ -123,6 +123,9 @@ class FakeGbif:
         if req.get_header("Authorization"):
             self.auth_headers.append(req.get_header("Authorization"))
         path = url.split("/v1", 1)[1]
+        if path.startswith(f"/occurrence/download/{FAKE_KEY}?_="):  # cache-busted status poll
+            assert req.get_header("Cache-control") == "no-cache"
+            path = path.split("?", 1)[0]
         if path == "/occurrence/search/predicate" and req.get_method() == "POST":
             body = json.loads(req.data.decode())
             assert body["limit"] == 0 and body["predicate"]["type"] == "and"

@@ -114,9 +114,12 @@ class GbifClient:
         self.timeout = timeout
 
     def _open(self, url: str, method: str = "GET", body: Optional[bytes] = None, auth: bool = False,
-              content_type: Optional[str] = None) -> Any:
+              content_type: Optional[str] = None, fresh: bool = False) -> Any:
         req = urllib.request.Request(url, data=body, method=method)
         req.add_header("User-Agent", USER_AGENT)
+        if fresh:
+            req.add_header("Cache-Control", "no-cache")
+            req.add_header("Pragma", "no-cache")
         if content_type:
             req.add_header("Content-Type", content_type)
         if auth:
@@ -126,11 +129,11 @@ class GbifClient:
             req.add_header("Authorization", f"Basic {token}")
         return self._urlopen(req, timeout=self.timeout)
 
-    def get_json(self, path: str, retries: int = 3) -> Any:
+    def get_json(self, path: str, retries: int = 3, fresh: bool = False) -> Any:
         """GET JSON; empty bodies (e.g. HTTP 204 No Content) return None; transient errors are retried."""
         for attempt in range(retries + 1):
             try:
-                with self._open(f"{self.api_base}{path}") as resp:
+                with self._open(f"{self.api_base}{path}", fresh=fresh) as resp:
                     raw = resp.read().decode("utf-8").strip()
                 return json.loads(raw) if raw else None
             except urllib.error.HTTPError as err:
@@ -166,7 +169,9 @@ class GbifClient:
         return key
 
     def download_metadata(self, key: str) -> Dict[str, Any]:
-        return self.get_json(f"/occurrence/download/{urllib.parse.quote(key)}")
+        # GBIF's edge cache can keep serving a stale "RUNNING" status for hours; a unique query
+        # string plus no-cache headers makes every poll reach the origin.
+        return self.get_json(f"/occurrence/download/{urllib.parse.quote(key)}?_={time.time_ns()}", fresh=True)
 
     def stream_to_file(self, url: str, dest: Path, chunk: int = 1 << 20) -> Tuple[str, int]:
         h = hashlib.sha256()
