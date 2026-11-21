@@ -229,5 +229,44 @@ class TestMultiRegionBuild(unittest.TestCase):
         self.assertEqual(ingest.parse_args(["fetch-hydrobasins", "--region", "all", "--level", "3"]).region, "all")
 
 
+class TestParallelPublish(unittest.TestCase):
+    def test_retries_transient_failures_and_switches_manifest_last(self) -> None:
+        import subprocess
+        import publish_release
+        calls: List[str] = []
+        failures = {"obj-3": 2}  # obj-3 fails twice (Cloudflare 500) then succeeds
+
+        def fake_run(cmd, capture_output=True, text=True):
+            name = cmd[-1]
+            calls.append(name)
+            if failures.get(name, 0) > 0:
+                failures[name] -= 1
+                return subprocess.CompletedProcess(cmd, 1, "", "500: Internal Server Error")
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        cmds = [["put", f"obj-{i}"] for i in range(10)] + [["put", "manifest"]]
+        with mock.patch.object(publish_release.subprocess, "run", side_effect=fake_run):
+            publish_release.run_upload_commands(cmds, jobs=4, retries=4, sleep=lambda s: None)
+        self.assertEqual(calls[-1], "manifest")
+        self.assertEqual(calls.count("obj-3"), 3)
+        self.assertEqual(len(calls), 13)
+
+    def test_permanent_failure_never_switches_manifest(self) -> None:
+        import subprocess
+        import publish_release
+        calls: List[str] = []
+
+        def fake_run(cmd, capture_output=True, text=True):
+            calls.append(cmd[-1])
+            return subprocess.CompletedProcess(cmd, 1 if cmd[-1] == "obj-1" else 0, "", "boom")
+
+        cmds = [["put", "obj-0"], ["put", "obj-1"], ["put", "manifest"]]
+        with mock.patch.object(publish_release.subprocess, "run", side_effect=fake_run), \
+                mock.patch("sys.stderr", new=io.StringIO()):
+            with self.assertRaises(subprocess.CalledProcessError):
+                publish_release.run_upload_commands(cmds, jobs=2, retries=2, sleep=lambda s: None)
+        self.assertNotIn("manifest", calls)
+
+
 if __name__ == "__main__":
     unittest.main()

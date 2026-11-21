@@ -11,6 +11,7 @@ Implements the release publication workflow from Sections 4.1, 4.3, and 5.2:
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import functools
 import hashlib
 import http.client
@@ -24,10 +25,11 @@ import socketserver
 import subprocess
 import sys
 import threading
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Callable, Any, Dict, List, Optional, Sequence, Tuple
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
@@ -149,6 +151,42 @@ def _guess_content_type(path: Path) -> str:
     return guessed or "application/octet-stream"
 
 
+def _run_with_retries(cmd: List[str], retries: int, sleep: Callable[[float], None] = time.sleep) -> None:
+    """Run one upload command, retrying transient failures (Cloudflare 5xx, network) with backoff."""
+    for attempt in range(retries + 1):
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        if proc.returncode == 0:
+            return
+        if attempt == retries:
+            sys.stderr.write(proc.stdout[-2000:] + proc.stderr[-4000:])
+            raise subprocess.CalledProcessError(proc.returncode, cmd, proc.stdout, proc.stderr)
+        sleep(min(60.0, 2.0 * 2 ** attempt))
+
+
+def run_upload_commands(commands: List[List[str]], jobs: int = 1, retries: int = 4,
+                        sleep: Callable[[float], None] = time.sleep) -> None:
+    """Upload every object; the last command (the root ``releases/manifest.json``) runs only after
+    all others succeeded, so the live site never points at a partially uploaded release."""
+    if not commands:
+        return
+    body, last = commands[:-1], commands[-1]
+    done = 0
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
+        futures = [pool.submit(_run_with_retries, cmd, retries, sleep) for cmd in body]
+        try:
+            for fut in concurrent.futures.as_completed(futures):
+                fut.result()
+                done += 1
+                if done % 250 == 0 or done == len(body):
+                    print(f"[publish] uploaded {done}/{len(body)} release objects", flush=True)
+        except BaseException:
+            for f in futures:
+                f.cancel()
+            raise
+    _run_with_retries(last, retries, sleep)
+    print("[publish] switched releases/manifest.json", flush=True)
+
+
 def publish_release(
     root: Path,
     version: Optional[str],
@@ -157,6 +195,8 @@ def publish_release(
     dest: Optional[Path] = None,
     dry_run: bool = False,
     rclone_remote: str = "r2",
+    jobs: int = 1,
+    retries: int = 4,
 ) -> Dict[str, Any]:
     if not version:
         manifest_path = root / "releases" / "manifest.json"
@@ -207,8 +247,8 @@ def publish_release(
                 item["content_type"],
             ]
             commands.append(cmd)
-            if not dry_run:
-                subprocess.run(cmd, check=True)
+        if not dry_run:
+            run_upload_commands(commands, jobs=jobs, retries=retries)
         return {
             "mode": "wrangler",
             "version": version,
@@ -230,8 +270,8 @@ def publish_release(
                 "--header-upload", f"Content-Type: {item['content_type']}",
             ]
             commands.append(cmd)
-            if not dry_run:
-                subprocess.run(cmd, check=True)
+        if not dry_run:
+            run_upload_commands(commands, jobs=jobs, retries=retries)
         return {
             "mode": "rclone",
             "version": version,
@@ -635,6 +675,8 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     p_pub.add_argument("--bucket", default="basinmap-public-data")
     p_pub.add_argument("--dest", type=Path, default=None, help="Target local directory for --mode local")
     p_pub.add_argument("--dry-run", action="store_true")
+    p_pub.add_argument("--jobs", type=int, default=1, help="Parallel uploads (manifest.json is always last)")
+    p_pub.add_argument("--retries", type=int, default=4, help="Retries per object on transient failures")
 
     p_ver = subparsers.add_parser("verify-http", help="Verify 206 byte-range, ETag, Cache-Control, and CORS")
     p_ver.add_argument("--root", type=Path, default=SCRIPT_DIR.parent / "public-r2")
@@ -658,6 +700,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             dest=args.dest,
             dry_run=args.dry_run,
             rclone_remote=args.rclone_remote,
+            jobs=args.jobs,
+            retries=args.retries,
         )
         print(json.dumps(result, indent=2))
         return 0

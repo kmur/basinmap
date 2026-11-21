@@ -162,7 +162,7 @@ jobs:
 
       - name: Publish to R2 (${{ inputs.target }})
         if: inputs.publish
-        run: python3 data-pipeline/publish_release.py publish --root build-r2 --version "$VERSION" --mode wrangler --bucket "$BUCKET"
+        run: python3 data-pipeline/publish_release.py publish --root build-r2 --version "$VERSION" --mode wrangler --bucket "$BUCKET" --jobs 12 --retries 5
 
       - name: Verify HTTP 206 range delivery
         if: inputs.publish
